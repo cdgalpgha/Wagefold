@@ -11,7 +11,7 @@ Automated and manual testing of Wagefold (web app, API and `WagefoldPayroll` con
 | **OWASP ZAP 2.x** baseline | Passive scan and spider of the site | 59 passed, 0 failed. Warnings: CSP incomplete (fixed), CSP wildcard for wallet connections (accepted, below) |
 | **OWASP ZAP** API active scan | Every API path (19, from an OpenAPI description), signed in as the treasury owner: SQL/NoSQL injection, XSS, command and code injection, path traversal, SSTI, XXE, SSRF/cloud metadata, padding oracle, error disclosure and more | 113 passed, 0 failed. Found two endpoints returning 500 on NUL bytes (fixed). Second run: 0 server errors |
 | **Nuclei** (10,688 HTTP templates, 19,743 requests) | Known CVEs, exposures, misconfigurations, default files, tech fingerprints | 0 vulnerabilities; 5 informational missing-header notes (3 added, 2 deliberately absent, below) |
-| **Semgrep** 1.182 (253 rules: OWASP Top 10, TypeScript, JavaScript, React, Next.js, JWT, SQL injection, XSS, secrets) | Source code | 2 low findings: third-party font stylesheet without integrity (fixed by self-hosting) and a non-constant log format (fixed). 1 remains in the demo page only (accepted) |
+| **Semgrep** 1.182 (253 rules: OWASP Top 10, TypeScript, JavaScript, React, Next.js, JWT, SQL injection, XSS, secrets) | Source code | 2 low findings: Google Fonts stylesheet without integrity (accepted, below) and a non-constant log format (fixed) |
 | **Slither** 0.11.6 (102 detectors) | `WagefoldPayroll.sol` and dependencies | 0 findings |
 | **gitleaks** 8 | Full git history | No secrets |
 | **npm audit** | Dependencies of `web/` and `contracts/` | Production: 4 advisories (2 high) → **0** after pinning patched versions. Contracts: 0 |
@@ -28,9 +28,8 @@ Shannon (KeygraphHQ's autonomous AI pentester) was requested but could not run i
 | 3 | **Cross-site writes relied on one layer** (manual): a form-style `text/plain` POST with a valid cookie was processed. Browsers don't send the `SameSite=Lax` cookie cross-site, so not exploitable, but there was no second layer | Low (defence in depth) | Middleware refuses API writes whose `Origin` isn't this site (production: `APP_DOMAIN` only), anything marked `Sec-Fetch-Site: cross-site`, and non-JSON bodies (415) |
 | 4 | **Vulnerable transitive dependencies** (npm audit): `ws` (memory disclosure, DoS), `postcss` (XSS in stringify, file read via sourceMappingURL), `uuid`, `decode-uri-component` | High/moderate, via wallet SDKs and Next.js build | npm `overrides` pin patched releases (`ws ^8.22`, `postcss ^8.5.31`, `uuid ^11.1.1`, `decode-uri-component ^0.4.3`). Production audit: 0. All tests and builds pass |
 | 5 | Dev tooling advisories (`tinypool` critical, `esbuild`, `@vitest/mocker`) | Dev only | Upgraded to Vitest 5 and Vite 8; `postcss-selector-parser` pinned to 7 (Tailwind output verified byte-identical) |
-| 6 | Fonts loaded from Google at runtime (Semgrep: no integrity) | Low | Self-hosted with `next/font`: no third-party request from visitors' browsers |
-| 7 | Unknown API paths answered with the HTML 404 page (ZAP) | Info | JSON 404 for `/api` and everything under it |
-| 8 | Missing `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, `X-Permitted-Cross-Domain-Policies` (Nuclei) | Info | Added (`same-origin-allow-popups`, `same-origin`, `none`) |
+| 6 | Unknown API paths answered with the HTML 404 page (ZAP) | Info | JSON 404 for `/api` and everything under it |
+| 7 | Missing `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, `X-Permitted-Cross-Domain-Policies` (Nuclei) | Info | Added (`same-origin-allow-popups`, `same-origin`, `none`) |
 
 ## Manual checks that passed
 
@@ -43,7 +42,7 @@ Shannon (KeygraphHQ's autonomous AI pentester) was requested but could not run i
 - **CSP allows `https:` and `wss:` for connections and `https:` images.** Wallet SDKs talk to their own relays and RPC providers (WalletConnect, Coinbase, the chain's RPC), which vary by wallet; pinning hosts would risk breaking real wallet connections that can't be tested here. Script execution is locked down by the nonce, which is what stops XSS. Revisit with a host allowlist once production wallets are confirmed.
 - **No Cross-Origin-Embedder-Policy** (`require-corp` would block wallet icons and SDKs) and **no X-Frame-Options** (it can't allow the Safe app; CSP `frame-ancestors` replaces it).
 - **`braces` (high, all versions)**: denial of service from deeply nested glob patterns, reachable only through Tailwind's build-time file watcher. Nothing a visitor sends reaches it. Fixed by moving to Tailwind 4 later.
-- **Demo page loads Geist from Google Fonts** without integrity: the artifact host allows only that stylesheet origin, and Google serves per-browser CSS, so integrity can't be used. The demo has no real data or funds.
+- **Geist loads from Google Fonts** (app and demo) without an integrity hash: Google serves different CSS per browser, so integrity can't be used. The CSP allows only `fonts.googleapis.com` for stylesheets and `fonts.gstatic.com` for font files, and no scripts. Self-hosting the font files would remove the outside request if that's ever preferred.
 - **No rate limiting** in the app: add it at the proxy or edge (sign-in, approvals, imports).
 - **Approvals are enforced by Wagefold, not on-chain**: the treasury key can still move its own funds outside Wagefold. Use a Safe treasury for on-chain enforcement.
 - **The contract has not had an external audit.**

@@ -157,7 +157,8 @@ async function main() {
     assert.ok(html.includes(`nonce="${nonce}"`), "inline scripts carry this request's nonce");
     const again = (await fetch(BASE + "/")).headers.get("content-security-policy") ?? "";
     assert.notEqual(again.match(/'nonce-([^']+)'/)![1], nonce, "a fresh nonce per request");
-    assert.ok(!html.includes("fonts.googleapis.com"), "fonts are self-hosted");
+    assert.match(csp, /style-src [^;]*https:\/\/fonts\.googleapis\.com/, "the Geist stylesheet is allowed");
+    assert.match(csp, /font-src [^;]*https:\/\/fonts\.gstatic\.com/, "Geist font files are allowed");
     const apiCsp = (await fetch(BASE + "/api/auth/nonce")).headers.get("content-security-policy");
     assert.equal(apiCsp, "default-src 'none'; frame-ancestors 'none'");
     const unknown = await fetch(BASE + "/api/does-not-exist");
