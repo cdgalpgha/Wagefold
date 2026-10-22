@@ -2,7 +2,26 @@
 
 Crypto payroll in one transaction. A finance team connects its treasury wallet, keeps its team in Wagefold (name, role, EVM wallet, monthly pay in USDC or USDT), and pays everyone with one signature.
 
-![Review payroll](docs/screenshots/5-review.png)
+![Wagefold landing page](docs/screenshots/landing-hero.png)
+
+<details>
+<summary><b>See the full landing page</b></summary>
+<br>
+<img src="docs/screenshots/1-landing.png" alt="Full Wagefold landing page: hero, how it works, supported wallets and stablecoins, measured gas infographic, safety, FAQ">
+</details>
+
+## Screens
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/5-review.png" alt="Review payroll with changes since last payroll and wallet check"><br><sub><b>Review</b>: what changed since the last payroll, flagged wallets, one-click send</sub></td>
+    <td width="50%"><img src="docs/screenshots/6-done.png" alt="Payroll paid in one transaction"><br><sub><b>Paid</b>: everyone paid in one transaction, verified on-chain</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/4-people-search.png" alt="People list with search"><br><sub><b>People</b>: the team database with search, sorting and CSV import</sub></td>
+    <td width="50%"><img src="docs/screenshots/7-history-expanded.png" alt="History with an expanded payroll run"><br><sub><b>History</b>: every run, who was paid and the transaction</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
