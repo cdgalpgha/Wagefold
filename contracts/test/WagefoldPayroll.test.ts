@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import hre from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { getAddress, keccak256, parseUnits, toHex, zeroAddress } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const usd = (n: string) => parseUnits(n, 6);
 const RUN_ID = keccak256(toHex("run-2026-10"));
@@ -127,5 +128,24 @@ describe("WagefoldPayroll", () => {
     assert.equal(receipt.status, "success");
     assert.ok(receipt.gasUsed < 5_000_000n, `gas used ${receipt.gasUsed}`);
     console.log(`      100 payments used ${receipt.gasUsed} gas`);
+  });
+
+  it("uses less gas than paying the same 100 people with separate transfers", async () => {
+    const { payroll, usdc, publicClient } = await loadFixture(deployFixture);
+    // Fresh recipients for each approach, so every transfer writes to a new balance slot in both cases.
+    const fresh = () => Array.from({ length: 100 }, () => privateKeyToAccount(generatePrivateKey()).address);
+
+    let separate = 0n;
+    for (const to of fresh()) {
+      const hash = await usdc.write.transfer([to, usd("1000")]);
+      separate += (await publicClient.waitForTransactionReceipt({ hash })).gasUsed;
+    }
+
+    await usdc.write.approve([payroll.address, usd("100000")]);
+    const hash = await payroll.write.pay([RUN_ID, fresh().map((to) => ({ token: usdc.address, to, amount: usd("1000") }))]);
+    const batched = (await publicClient.waitForTransactionReceipt({ hash })).gasUsed;
+
+    console.log(`      100 separate transfers: ${separate} gas · one Wagefold run: ${batched} gas`);
+    assert.ok(batched < separate, "one run must beat separate transfers");
   });
 });

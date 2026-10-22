@@ -7,3 +7,17 @@ body { @apply bg-canvas text-ink font-sans; }
 :focus-visible { outline: 2px solid #2647D9; outline-offset: 2px; }
 .tabular { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Landing page motion. Everything here is switched off by the reduced-motion rule above. */
+@keyframes wf-float { 0%, 100% { transform: translate3d(0, 0, var(--z, 0px)); } 50% { transform: translate3d(0, -10px, var(--z, 0px)); } }
+@keyframes wf-coin { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+@keyframes wf-dash { to { stroke-dashoffset: -28; } }
+@keyframes wf-rail { 0% { left: 0%; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+@keyframes wf-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.wf-float { animation: wf-float 6s ease-in-out infinite; }
+.wf-coin-spin { animation: wf-coin 9s linear infinite; }
+.wf-dash { animation: wf-dash 1.6s linear infinite; }
+.wf-rail-dot { animation: wf-rail 4.5s ease-in-out infinite; }
+.wf-rise { animation: wf-rise 0.7s ease-out both; }
+.preserve-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
