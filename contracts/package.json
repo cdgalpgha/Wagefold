@@ -1,0 +1,25 @@
+{
+  "name": "@wagefold/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "dev:setup": "hardhat run scripts/dev-setup.ts --network localhost",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+    "deploy:base": "hardhat run scripts/deploy.ts --network base"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
+    "@nomicfoundation/hardhat-viem": "^2.1.5",
+    "@openzeppelin/contracts": "^5.1.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.2",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.29.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2",
+    "viem": "^2.57.8"
+  }
+}
