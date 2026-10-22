@@ -3,21 +3,25 @@
  * It reuses the app's own validation, money and payment-matching code, verifies SIWE signatures,
  * and confirms runs by reading the simulated chain's receipts, like the server reads Base.
  */
-import { formatUnits, getAddress, parseEventLogs, verifyMessage, type Hex } from "viem";
+import { formatEther, formatUnits, getAddress, hexToBigInt, isAddress, parseEventLogs, verifyMessage, type Hex } from "viem";
 import { parseSiweMessage } from "viem/siwe";
 import { MAX_PAYMENTS, payrollAbi } from "@/lib/abi";
 import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
 import { sumByToken } from "@/lib/money";
+import { personChanges } from "@/lib/activity";
 import { reviewRun } from "@/lib/changes";
+import { PAR } from "@/lib/records";
+import { isPayDay } from "@/lib/schedule";
 import { buildPayments, onchainRef, samePayments, type RunItem } from "@/lib/payments";
-import type { Employee, Run } from "@/lib/types";
+import type { Activity, ActivityAction, Employee, Org as PublicOrg, Run } from "@/lib/types";
 import { employeeInput, firstError } from "@/lib/validation";
 import { freshChain, SimChain, type ChainState } from "./sim-chain";
 import * as store from "./store";
 
-type Org = { id: string; ownerAddress: string; name: string };
+type Org = PublicOrg;
 type AppState = {
   orgs: Org[];
+  activity?: (Activity & { orgId: string })[];
   employees: (Employee & { orgId: string })[];
   runs: (Run & { orgId: string })[];
   items: Record<string, RunItem[]>;
@@ -66,6 +70,11 @@ const session = () => need(state.app.session, 401, "Sign in with your wallet to 
 const publicRun = ({ orgId: _o, ...run }: Run & { orgId: string }): Run => run;
 const publicEmployee = ({ orgId: _o, ...e }: Employee & { orgId: string }): Employee => e;
 
+function log(orgId: string, actor: string, action: ActivityAction, detail: Record<string, unknown> = {}) {
+  state.app.activity ??= [];
+  state.app.activity.push({ id: String(state.app.activity.length + 1), orgId, at: new Date().toISOString(), actor, action, detail });
+}
+
 function employeeBody(body: unknown, orgId: string, exceptId?: string) {
   const parsed = employeeInput.safeParse(body);
   if (!parsed.success) throw new HttpError(400, firstError(parsed.error));
@@ -99,13 +108,15 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     const address = getAddress(fields.address);
     let org = state.app.orgs.find((o) => o.ownerAddress.toLowerCase() === address.toLowerCase());
     if (!org) {
-      org = { id: uuid(), ownerAddress: address, name: "Northwind Labs" };
+      org = { id: uuid(), ownerAddress: address, name: "Northwind Labs", payDay: 31 };
       state.app.orgs.push(org);
       // Example team so the demo opens in a working state. Edit or remove them freely.
       for (const e of SAMPLE_TEAM) state.app.employees.push({ ...e, id: uuid(), orgId: org.id });
     }
+    org.payDay ??= null;
     state.app.session = { address, orgId: org.id, chainId: fields.chainId! };
     state.app.nonce = null;
+    log(org.id, address, "signed_in", { chainId: fields.chainId });
     persist();
     return [200, { address, chainId: fields.chainId, org }];
   }
@@ -120,7 +131,40 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
 
   if (path === "/api/me") {
     const org = need(state.app.orgs.find((o) => o.id === s.orgId), 404, "Organization not found.");
+    if (method === "PATCH") {
+      const { name, payDay, ...rest } = (body ?? {}) as { name?: unknown; payDay?: unknown };
+      if (Object.keys(rest).length) throw new HttpError(400, "Invalid settings.");
+      const changes: Record<string, [string, string]> = {};
+      if (name !== undefined) {
+        const n = typeof name === "string" ? name.trim() : "";
+        if (!n || n.length > 80) throw new HttpError(400, "Company name must be 1 to 80 characters.");
+        if (n !== org.name) changes.name = [org.name, n];
+        org.name = n;
+      }
+      if (payDay !== undefined) {
+        if (payDay !== null && !isPayDay(payDay)) throw new HttpError(400, "Payday must be a day from 1 to 28, or the last day of the month.");
+        if (payDay !== org.payDay) changes.payDay = [String(org.payDay ?? ""), String(payDay ?? "")];
+        org.payDay = payDay as number | null;
+      }
+      if (Object.keys(changes).length) log(s.orgId, s.address, "company_updated", { changes });
+      persist();
+      return [200, { org }];
+    }
     return [200, { address: s.address, chainId: s.chainId, org }];
+  }
+
+  if (path === "/api/activity") {
+    const list = (state.app.activity ?? []).filter((a) => a.orgId === s.orgId).slice(-200).reverse();
+    return [200, { activity: list.map(({ orgId: _o, ...a }) => a) }];
+  }
+
+  if (path === "/api/records") {
+    const org = need(state.app.orgs.find((o) => o.id === s.orgId), 404, "Organization not found.");
+    const runs = state.app.runs
+      .filter((r) => r.orgId === s.orgId && r.status === "confirmed")
+      .sort((a, b) => (a.paidAt ?? "").localeCompare(b.paidAt ?? ""))
+      .map((r) => ({ run: publicRun(r), items: state.app.items[r.id] ?? [] }));
+    return [200, { org, runs }];
   }
 
   if (parts[0] === "employees") {
@@ -142,22 +186,28 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
             errors.push({ row: i + 1, error: (err as Error).message });
           }
         });
+        if (created.length) log(s.orgId, s.address, "people_imported", { count: created.length });
         persist();
         return [created.length ? 201 : 400, { created, errors }];
       }
       const e = { ...employeeBody(body, s.orgId), id: uuid(), orgId: s.orgId };
       state.app.employees.push(e);
+      log(s.orgId, s.address, "person_added", { employeeId: e.id, name: e.name, wallet: e.wallet, amount: e.amount, token: e.token });
       persist();
       return [201, { employee: publicEmployee(e) }];
     }
     const target = need(mine.find((e) => e.id === parts[1]), 404, "Person not found.");
     if (method === "PATCH") {
+      const before = { ...target };
       Object.assign(target, employeeBody(body, s.orgId, target.id));
+      const changes = personChanges(before, target);
+      if (Object.keys(changes).length) log(s.orgId, s.address, "person_updated", { employeeId: target.id, name: target.name, changes });
       persist();
       return [200, { employee: publicEmployee(target) }];
     }
     if (method === "DELETE") {
       state.app.employees = state.app.employees.filter((e) => e !== target);
+      log(s.orgId, s.address, "person_removed", { employeeId: target.id, name: target.name, wallet: target.wallet, amount: target.amount, token: target.token });
       persist();
       return [200, { ok: true }];
     }
@@ -189,11 +239,15 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
         totals: Object.fromEntries(TOKEN_SYMBOLS.filter((t) => sums[t] > 0n).map((t) => [t, formatUnits(sums[t], TOKEN_DECIMALS)])),
         createdAt: new Date().toISOString(),
         confirmedAt: null,
+        paidAt: null,
+        blockNumber: null,
+        networkFee: null,
+        usdRates: null,
       };
       const items: RunItem[] = team.map((e) => ({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token as TokenSymbol, employeeId: e.id }));
       const paidRuns = mine.filter((r) => r.status === "confirmed").sort((a, b) => (b.confirmedAt ?? "").localeCompare(a.confirmedAt ?? ""));
       const previous = paidRuns[0] ? state.app.items[paidRuns[0].id] ?? null : null;
-      const paidWallets = paidRuns.flatMap((r) => (state.app.items[r.id] ?? []).map((i) => i.wallet));
+      const paidWallets = paidRuns.flatMap((r) => (state.app.items[r.id] ?? []).map((i) => ({ wallet: i.wallet, name: i.name })));
       state.app.runs.push(run);
       state.app.items[id] = items;
       persist();
@@ -207,6 +261,12 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
       if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new HttpError(400, "Missing transaction hash.");
       if (run.status !== "draft") throw new HttpError(409, "This run was already submitted.");
       Object.assign(run, { status: "submitted", txHash });
+      const inRun = new Set(items.map((i) => i.wallet.toLowerCase()));
+      const verified = (body as { verifiedWallets?: unknown })?.verifiedWallets;
+      const verifiedWallets = Array.isArray(verified)
+        ? verified.filter((w): w is string => typeof w === "string" && isAddress(w, { strict: false }) && inRun.has(w.toLowerCase())).map((w) => getAddress(w))
+        : [];
+      log(s.orgId, s.address, "run_sent", { runId: run.id, txHash, recipients: run.recipientCount, totals: run.totals, verifiedWallets });
       persist();
       return [200, { run: publicRun(run) }];
     }
@@ -216,7 +276,18 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
       const receipt = chain.getReceipt(run.txHash!);
       if (!receipt) return [202, { run: publicRun(run), pending: true }];
       const settle = (status: "confirmed" | "failed", reason: string | null = null) => {
-        Object.assign(run, { status, failureReason: reason, confirmedAt: status === "confirmed" ? new Date().toISOString() : null });
+        const now = new Date().toISOString();
+        Object.assign(run, { status, failureReason: reason, confirmedAt: status === "confirmed" ? now : null });
+        if (status === "confirmed") {
+          const tokens = [...new Set(items.map((i) => i.token))];
+          Object.assign(run, {
+            paidAt: now,
+            blockNumber: hexToBigInt(receipt.blockNumber as Hex).toString(),
+            networkFee: formatEther(hexToBigInt(receipt.gasUsed as Hex) * hexToBigInt(receipt.effectiveGasPrice as Hex)),
+            usdRates: Object.fromEntries(tokens.map((t) => [t, PAR])),
+          });
+        }
+        log(s.orgId, s.address, status === "confirmed" ? "run_paid" : "run_failed", { runId: run.id, txHash: run.txHash, ...(reason ? { reason } : {}) });
         persist();
         return [200, { run: publicRun(run) }] as [number, unknown];
       };

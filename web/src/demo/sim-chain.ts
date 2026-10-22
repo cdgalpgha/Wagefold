@@ -181,9 +181,10 @@ export class SimChain {
       blockNumber,
       from: tx.from,
       to: tx.to,
-      cumulativeGasUsed: "0x1406f4",
-      gasUsed: "0x1406f4",
-      effectiveGasPrice: "0x3b9aca00",
+      // Roughly what Base charges: ~31k gas per payment at 0.01 gwei.
+      cumulativeGasUsed: numberToHex(46_000 + 15_500 * tx.logs.length),
+      gasUsed: numberToHex(46_000 + 15_500 * tx.logs.length),
+      effectiveGasPrice: "0x989680",
       contractAddress: null,
       logs: tx.logs.map((l, i) => ({
         ...l,
@@ -262,7 +263,7 @@ export class SimChain {
       case "eth_getBlockByNumber":
         return this.block(this.state.block);
       case "eth_gasPrice":
-        return "0x3b9aca00";
+        return "0x989680";
       case "eth_maxPriorityFeePerGas":
         return "0x0";
       case "eth_feeHistory":

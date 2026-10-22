@@ -56,6 +56,34 @@ create table if not exists payroll_items (
   token text not null,
   primary key (run_id, position)
 );
+
+alter table organizations add column if not exists pay_day smallint check (pay_day between 1 and 28 or pay_day = 31);
+alter table payroll_runs add column if not exists paid_at timestamptz;
+alter table payroll_runs add column if not exists block_number numeric(30, 0);
+alter table payroll_runs add column if not exists network_fee_wei numeric(40, 0);
+alter table payroll_runs add column if not exists usd_rates jsonb;
+
+-- Append-only: the app inserts and reads, never updates or deletes, so the trail can't be rewritten.
+create table if not exists audit_events (
+  id bigserial primary key,
+  org_id uuid not null references organizations(id) on delete cascade,
+  at timestamptz not null default now(),
+  actor text not null,
+  action text not null,
+  detail jsonb not null default '{}'
+);
+create index if not exists audit_events_org on audit_events (org_id, id desc);
+
+-- Enforced in the database too, so a bug or a stray query can't rewrite history. Deleting a whole
+-- company still cascades: that delete reaches this table at trigger depth 2.
+create or replace function audit_events_append_only() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' and pg_trigger_depth() > 1 then return old; end if;
+  raise exception 'audit_events is append-only';
+end $$;
+drop trigger if exists audit_events_append_only on audit_events;
+create trigger audit_events_append_only before update or delete on audit_events
+  for each row execute function audit_events_append_only();
 `;
 
 async function init(): Promise<Db> {

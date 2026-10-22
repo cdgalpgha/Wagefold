@@ -13,13 +13,15 @@ import { Logo } from "./Logo";
 import { NetworkSwitcher } from "./NetworkSwitcher";
 import { PayTab } from "./PayTab";
 import { PeopleTab } from "./PeopleTab";
+import { SettingsTab } from "./SettingsTab";
 import { shortAddress } from "./ui";
 
-type Tab = "pay" | "people" | "history";
+type Tab = "pay" | "people" | "history" | "settings";
 const TABS: { id: Tab; label: string }[] = [
   { id: "pay", label: "Pay" },
   { id: "people", label: "People" },
   { id: "history", label: "History" },
+  { id: "settings", label: "Settings" },
 ];
 
 export function Dashboard({ me }: { me: Me }) {
@@ -81,11 +83,13 @@ export function Dashboard({ me }: { me: Me }) {
             <NetworkSwitcher />
           </div>
         ) : tab === "pay" ? (
-          <PayTab onOpenPeople={() => setTab("people")} onOpenHistory={() => setTab("history")} />
+          <PayTab onOpenPeople={() => setTab("people")} onOpenHistory={() => setTab("history")} onOpenSettings={() => setTab("settings")} />
         ) : tab === "people" ? (
           <PeopleTab />
+        ) : tab === "history" ? (
+          <HistoryTab me={me} />
         ) : (
-          <HistoryTab />
+          <SettingsTab me={me} />
         )}
       </main>
     </div>

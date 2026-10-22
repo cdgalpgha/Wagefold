@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { useAccount } from "wagmi";
 import { api } from "@/lib/api";
+import { saveFile } from "@/lib/download";
+import { findLookalikes } from "@/lib/lookalike";
+import { toCsv } from "@/lib/records";
 import { availableTokens, getChainConfig, type TokenSymbol } from "@/lib/chains";
 import { formatAmount, sumByToken, totalsLabel } from "@/lib/money";
 import type { Employee } from "@/lib/types";
@@ -89,13 +92,7 @@ export function PeopleTab() {
   }
 
   function downloadTemplate() {
-    const csv = "name,role,wallet,amount,token\nAda Lovelace,Engineer,0x0000000000000000000000000000000000000001,5000,USDC\n";
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "wagefold-people.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    void saveFile("wagefold-people-template.csv", toCsv([["name", "role", "wallet", "amount", "token"], ["Ada Lovelace", "Engineer", "0x0000000000000000000000000000000000000001", "5000", "USDC"]]));
   }
 
   const actions = (e: Employee) => (
@@ -167,6 +164,7 @@ export function PeopleTab() {
         <EmployeeForm
           key={editing === "new" ? "new" : editing.id}
           initial={editing === "new" ? undefined : editing}
+          team={all}
           tokens={tokens}
           onCancel={() => setEditing(null)}
           onSaved={(name, isNew) => {
@@ -265,7 +263,7 @@ export function PeopleTab() {
               CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>
             </p>
             {/* Artifact pages can't start downloads, so the demo build only shows the format. */}
-            {!process.env.NEXT_PUBLIC_DEMO && <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>}
+            <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>
           </div>
         )}
       </Card>
@@ -283,11 +281,13 @@ function Avatar({ name, tone }: { name: string; tone: string }) {
 
 function EmployeeForm({
   initial,
+  team,
   tokens,
   onCancel,
   onSaved,
 }: {
   initial?: Employee;
+  team: Employee[];
   tokens: TokenSymbol[];
   onCancel: () => void;
   onSaved: (name: string, isNew: boolean) => void;
@@ -304,6 +304,9 @@ function EmployeeForm({
     setError(null);
   };
   const tokenOptions = Array.from(new Set([...tokens, draft.token]));
+  const others = team.filter((e) => e.id !== initial?.id);
+  const lookalike = findLookalikes([{ wallet: draft.wallet.trim(), name: draft.name }], others)[0];
+  const walletChanged = !!initial && draft.wallet.trim().toLowerCase() !== initial.wallet.toLowerCase() && draft.wallet.trim().length === 42;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -344,6 +347,21 @@ function EmployeeForm({
             <input className={`${inputClass} font-mono text-sm`} value={draft.wallet} onChange={set("wallet")} placeholder="0x…" spellCheck={false} autoComplete="off" required />
           </Field>
         </div>
+        {lookalike && (
+          <div role="alert" className="rounded-xl border border-[#F1C4BF] bg-bad-soft px-4 py-3 text-sm text-bad-text">
+            <p className="font-semibold">This address looks like {lookalike.resemblesName}&apos;s wallet, but it&apos;s a different address.</p>
+            <p className="mt-1">
+              <span className="font-mono">{shortAddress(lookalike.wallet)}</span> vs <span className="font-mono">{shortAddress(lookalike.resembles)}</span>. Scammers
+              create addresses with the same first and last characters and plant them in wallet history. Copy addresses only from the person, never from past transactions.
+            </p>
+          </div>
+        )}
+        {walletChanged && !lookalike && (
+          <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
+            <span className="font-semibold">Changing {initial!.name}&apos;s wallet.</span> Confirm the new address with them on a call or in person, not by
+            email or chat: a request to change payout details is the most common way payroll gets stolen. The change is logged and flagged at the next payroll.
+          </p>
+        )}
         {error && <p role="alert" className="text-sm text-bad-text">{error}</p>}
         <div className="flex flex-wrap gap-2.5">
           <Button type="submit" disabled={saving}>{initial ? "Save changes" : "Save person"}</Button>

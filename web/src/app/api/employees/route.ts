@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fail, json, readJson, requireSession } from "@/lib/server/http";
-import { createEmployee, DuplicateWalletError, listEmployees, type Employee } from "@/lib/server/repo";
+import { createEmployee, DuplicateWalletError, listEmployees, logActivity, type Employee } from "@/lib/server/repo";
 import { employeeInput, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +40,12 @@ export async function POST(req: Request) {
         else throw err;
       }
     }
+    if (created.length) {
+      await logActivity(session.orgId, session.address, "people_imported", {
+        count: created.length,
+        people: created.slice(0, 50).map((e) => ({ name: e.name, wallet: e.wallet, amount: e.amount, token: e.token })),
+      });
+    }
     return json({ created, errors }, created.length ? 201 : 400);
   }
 
@@ -47,7 +53,10 @@ export async function POST(req: Request) {
   const parsed = employeeInput.safeParse(body);
   if (!parsed.success) return fail(firstError(parsed.error));
   try {
-    return json({ employee: await createEmployee(session.orgId, parsed.data) }, 201);
+    const employee = await createEmployee(session.orgId, parsed.data);
+    const { name, wallet, amount, token } = employee;
+    await logActivity(session.orgId, session.address, "person_added", { employeeId: employee.id, name, wallet, amount, token });
+    return json({ employee }, 201);
   } catch (err) {
     if (err instanceof DuplicateWalletError) return fail(err.message, 409);
     throw err;

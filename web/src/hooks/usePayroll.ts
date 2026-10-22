@@ -50,7 +50,7 @@ export function usePayroll() {
   }, [chainId]);
 
   const send = useCallback(
-    async (run: Run, items: RunItem[]) => {
+    async (run: Run, items: RunItem[], verifiedWallets: string[] = []) => {
       const cfg = getChainConfig(run.chainId);
       if (!cfg || !address || !publicClient || !walletClient) {
         setPhase({ kind: "error", message: "Reconnect your wallet and try again.", run, items });
@@ -116,7 +116,7 @@ export function usePayroll() {
         }
 
         // 3. Record the hash, wait for the block, then let the server check the chain itself.
-        await api(`/api/runs/${run.id}/submit`, { body: { txHash } });
+        await api(`/api/runs/${run.id}/submit`, { body: { txHash, verifiedWallets } });
         setPhase({ kind: "sending", run, items, txHash });
         await publicClient.waitForTransactionReceipt({ hash: txHash });
         setPhase({ kind: "verifying", run, items, txHash });

@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits } from "viem";
+import { formatEther, formatUnits, parseUnits } from "viem";
 import { TOKEN_DECIMALS, TOKEN_SYMBOLS, type TokenSymbol } from "./chains";
 
 const AMOUNT_RE = /^\d+(\.\d{1,6})?$/;
@@ -49,4 +49,13 @@ export function totalsLabel(totals: Totals | Record<string, string>): string {
     return units > 0n ? [`${formatAmount(units)} ${s}`] : [];
   });
   return parts.length ? parts.join(" + ") : "Nothing to pay";
+}
+
+/** Network fees, two significant figures: 31000000000000n or "0.000031" -> "0.000031". */
+export function formatEth(value: bigint | string): string {
+  const eth = Number(typeof value === "bigint" ? formatEther(value) : value);
+  if (!(eth > 0)) return "0";
+  if (eth < 0.000001) return "<0.000001";
+  const p = eth.toPrecision(2);
+  return p.includes(".") && !p.includes("e") ? p.replace(/0+$/, "").replace(/\.$/, "") : p;
 }

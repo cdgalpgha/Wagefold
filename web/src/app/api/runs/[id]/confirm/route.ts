@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { parseEventLogs, type Hex } from "viem";
 import { payrollAbi } from "@/lib/abi";
-import { getChainConfig } from "@/lib/chains";
+import { getChainConfig, TOKEN_SYMBOLS } from "@/lib/chains";
 import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, requireSession } from "@/lib/server/http";
-import { getRun, markRunResult } from "@/lib/server/repo";
+import { ratesAt } from "@/lib/server/prices";
+import { getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,17 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const receipt = await client.getTransactionReceipt({ hash: run.txHash as Hex }).catch(() => null);
   if (!receipt) return json({ run, pending: true }, 202);
 
-  const settle = async (result: { status: "confirmed" } | { status: "failed"; reason: string }) =>
-    json({ run: (await markRunResult(session.orgId, run.id, result)) ?? run });
+  const settle = async (result: { status: "confirmed"; record: RunRecord } | { status: "failed"; reason: string }) => {
+    const updated = await markRunResult(session.orgId, run.id, result);
+    if (updated) {
+      await logActivity(session.orgId, session.address, updated.status === "confirmed" ? "run_paid" : "run_failed", {
+        runId: run.id,
+        txHash: run.txHash,
+        ...(result.status === "failed" ? { reason: result.reason } : {}),
+      });
+    }
+    return json({ run: updated ?? run });
+  };
 
   if (receipt.status !== "success") return settle({ status: "failed", reason: "The transaction reverted. No one was paid." });
 
@@ -55,5 +65,17 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!samePayments(buildPayments(items, cfg), actual)) {
     return settle({ status: "failed", reason: "The on-chain payments don't match this run." });
   }
-  return settle({ status: "confirmed" });
+  // Keep what an accountant needs: when it settled, the block, the network fee and the USD rate used.
+  const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+  const l1Fee = (receipt as { l1Fee?: bigint | null }).l1Fee ?? 0n; // Base charges an L1 data fee on top of L2 gas
+  const tokens = TOKEN_SYMBOLS.filter((t) => items.some((i) => i.token === t));
+  return settle({
+    status: "confirmed",
+    record: {
+      paidAt: new Date(Number(block.timestamp) * 1000),
+      blockNumber: receipt.blockNumber,
+      networkFeeWei: receipt.gasUsed * receipt.effectiveGasPrice + l1Fee,
+      usdRates: await ratesAt(client, run.chainId, tokens, receipt.blockNumber),
+    },
+  });
 }

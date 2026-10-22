@@ -19,7 +19,15 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/4-people-search.png" alt="People list with search"><br><sub><b>People</b>: the team database with search, sorting and CSV import</sub></td>
-    <td width="50%"><img src="docs/screenshots/7-history-expanded.png" alt="History with an expanded payroll run"><br><sub><b>History</b>: every run, who was paid and the transaction</sub></td>
+    <td width="50%"><img src="docs/screenshots/12-history-records.png" alt="History with accountant exports and an expanded run"><br><sub><b>Records</b>: every run with its block, network fee and USD rate, plus exports for your accountant</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/9-review-lookalike.png" alt="Review flagging a lookalike wallet and asking to confirm each new or changed wallet"><br><sub><b>Wallet safety</b>: lookalike addresses flagged, each new or changed wallet confirmed in full</sub></td>
+    <td width="50%"><img src="docs/screenshots/10-payslip.png" alt="Payslip with year-to-date total and transaction"><br><sub><b>Payslips</b>: fiat value, year-to-date total and the transaction as proof of payment</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/11-activity.png" alt="Append-only activity log"><br><sub><b>Activity</b>: who changed which wallet or amount, and every payroll sent</sub></td>
+    <td width="50%"><img src="docs/screenshots/3-pay-home.png" alt="Pay home with the next payday"><br><sub><b>Payday</b>: when payroll is due, and a warning if a payday passes unpaid</sub></td>
   </tr>
 </table>
 
@@ -28,8 +36,10 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
 1. **Land and connect.** The landing page explains the product; "Connect wallet" opens the wallet picker. Supported: MetaMask or any browser wallet, Coinbase Wallet, Trust Wallet and other phone wallets (WalletConnect), or Safe.
 2. **Sign in** by signing a message ([Sign-In with Ethereum](https://eips.ethereum.org/EIPS/eip-4361)). No gas, no funds move. The wallet that signs in owns the company's data.
 3. **People** is the employee database. Add people one by one or import a CSV.
-4. **Run payroll** snapshots everyone from People into a run and shows what changed since the last paid run (new people, removed people, pay changes, wallet changes). Changed or never-paid wallets are flagged and must be confirmed before sending. It checks the treasury balance and sends every payment in one transaction through `WagefoldPayroll`.
-5. **The server verifies** the transaction on-chain: it only marks a run paid if the contract paid exactly the snapshotted wallets and amounts, from this company's wallet.
+4. **Run payroll** snapshots everyone from People into a run and shows what changed since the last paid run (new people, removed people, pay changes, wallet changes). Each changed or never-paid wallet is shown in full and must be confirmed with its owner before sending. A wallet that shares its first and last characters with a wallet you've paid before is flagged as a likely [address-poisoning](https://www.chainalysis.com/blog/address-poisoning-scam/) lookalike. It checks the treasury balance, the ETH for gas, and estimates the network fee, then sends every payment in one transaction through `WagefoldPayroll`.
+5. **The server verifies** the transaction on-chain: it only marks a run paid if the contract paid exactly the snapshotted wallets and amounts, from this company's wallet. It records when the block settled, the network fee, and the USD rate used.
+6. **Records** come from verified runs only: a payslip per payment (with year-to-date totals), a per-payment CSV, a journal in QuickBooks' import layout, and yearly totals per person. History also has an activity log of every change, which can't be edited.
+7. **Payday.** Set a monthly payday in Settings. Pay shows when payroll is due, warns if a payday passed unpaid, and offers a calendar reminder. Wagefold never sends on its own.
 
 Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/eip-5792), e.g. Coinbase Smart Wallet) approve and pay with one confirmation. Other wallets first approve each token for exactly this run's total, then confirm the payment.
 
@@ -41,6 +51,7 @@ Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/ei
 | `web/` | Next.js 15 app: wagmi + viem for wallets, API routes, Postgres (embedded PGlite locally) |
 | `brand/` | Logo, mark, app icon (SVG) and brand sheet |
 | `docs/screenshots/` | The app, captured from the end-to-end UI run |
+| `docs/research/` | What payroll buyers and recipients complain about and ask for, and the build order it led to |
 
 ## The contract
 
@@ -63,6 +74,9 @@ It has not had an external audit. Get one before handling real payroll.
 - **Sessions** are HS256-signed, httpOnly, `SameSite=Lax` cookies (7 days). There is no server-side revocation yet: signing out clears the cookie, but a stolen cookie stays valid until it expires.
 - **Access control:** every query is scoped to the signed-in company; unknown fields in requests (such as another company's id) are ignored.
 - **Payments** are verified on-chain before a run is marked paid, from the right wallet, with exactly the snapshotted recipients and amounts.
+- **Wallet fraud:** lookalike addresses are flagged in People and in the review; every new or changed wallet must be confirmed individually, and the confirmation is logged with the run.
+- **Activity log** is append-only in the app and in the database (a trigger rejects updates and deletes), scoped to the company, and records the signer's address for every change.
+- **Exports** neutralise spreadsheet formulas in user-typed fields (CSV injection), and payslips escape every value and contain no scripts.
 - **Headers:** `frame-ancestors 'self' https://app.safe.global` (anti-clickjacking while still allowing the Safe app), `nosniff`, HSTS, and `Cache-Control: no-store` on all API responses.
 - **Known items:** no rate limiting yet (add it at the proxy or edge); `ws` inside the WalletConnect SDK has a published advisory that needs a wagmi major upgrade; the contract is unaudited.
 
@@ -89,12 +103,12 @@ In your wallet, add the network `http://127.0.0.1:8545` (chain id 31337) and imp
 
 ```bash
 cd contracts && npm test         # contract: payouts, atomicity, allowance safety, limits, gas
-cd web && npm test               # unit: amounts, validation, CSV, payment building and matching
+cd web && npm test               # unit: amounts, validation, CSV import/export, lookalikes, payslips, schedule
 cd web && npm run typecheck
 
 # End to end, with the local chain running and dev:setup done:
 cd web && npm run build && SESSION_SECRET=dev APP_DOMAIN=localhost:3000 npm start
-cd web && npm run e2e            # sign-in, People, run, payment, verification, plus attack cases
+cd web && npm run e2e            # sign-in, People, run, payment, verification, records, activity log, attack cases
 ```
 
 ## Deploy
@@ -108,9 +122,15 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
    - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: from WalletConnect Cloud, to enable Trust Wallet and other phone wallets
    - `NEXT_PUBLIC_USDT_ADDRESS_8453`: USDT on Base. Verify the address yourself before setting it; USDC on Base and Base Sepolia are built in.
 
-## Not built yet
+## USD rates
 
-- Team roles (approvers other than the treasury owner) and a Safe-native multi-signer flow
-- Recurring schedules and reminders
-- Accounting exports (QuickBooks, Xero)
-- Editing a company name in the UI (the API supports it)
+Exports and payslips show a USD value for every payment. By default that is par (1 token = 1 USD), labelled as such. To record a market rate instead, set a Chainlink-style price feed per token and chain, for example `PRICE_FEED_USDC_8453=0x…`; the server then reads it at the payment's block and names the feed in the export. Verify feed addresses on [data.chain.link](https://data.chain.link) before setting them.
+
+## Next
+
+The [research](docs/research/payroll-buyer-needs.md) ranks these next:
+
+- A Safe-native multi-signer flow: propose the run to the treasury Safe, show signers the decoded payload and the changes, verify the executed result
+- Team roles with maker-checker approval: whoever edits wallets or amounts can't approve the run; a cooling-off period on wallet changes
+- A recipient view: payment status and payslips without asking the employer
+- Xero journal layout and email reminders before payday

@@ -3,7 +3,7 @@ import { getAddress, isHex } from "viem";
 import { parseSiweMessage } from "viem/siwe";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, readJson } from "@/lib/server/http";
-import { upsertOrganization } from "@/lib/server/repo";
+import { logActivity, upsertOrganization } from "@/lib/server/repo";
 import { createSessionCookie, NONCE_COOKIE } from "@/lib/server/session";
 
 export async function POST(req: Request) {
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
   const org = await upsertOrganization(address);
   await createSessionCookie({ address, orgId: org.id, chainId: parsed.chainId });
   jar.delete(NONCE_COOKIE);
+  await logActivity(org.id, address, "signed_in", { chainId: parsed.chainId });
   return json({ address, chainId: parsed.chainId, org });
 }
 

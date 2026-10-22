@@ -1,4 +1,5 @@
 import type { TokenSymbol } from "./chains";
+import { findLookalikes, type Known, type Lookalike } from "./lookalike";
 import { toUnits } from "./money";
 import type { RunItem } from "./payments";
 
@@ -15,6 +16,8 @@ export type RunReview = {
   changes: Change[];
   /** Wallets in this run that have never received a payment from this organization. */
   newWallets: string[];
+  /** Wallets that look like, but aren't, another wallet on the team or one paid before (address poisoning). */
+  lookalikes: Lookalike[];
 };
 
 const ORDER: Record<Change["kind"], number> = { wallet: 0, added: 1, pay: 2, removed: 3 };
@@ -23,10 +26,15 @@ const ORDER: Record<Change["kind"], number> = { wallet: 0, added: 1, pay: 2, rem
  * Compares a new run with the last paid one. Wallet changes come first because a changed or
  * never-paid address is the costliest mistake payroll can make: payments can't be reversed.
  */
-export function reviewRun(previous: RunItem[] | null, next: RunItem[], paidWallets: string[]): RunReview {
-  const paid = new Set(paidWallets.map((w) => w.toLowerCase()));
+export function reviewRun(previous: RunItem[] | null, next: RunItem[], paidBefore: Known[]): RunReview {
+  const paid = new Set(paidBefore.map((w) => w.wallet.toLowerCase()));
   const newWallets = next.filter((i) => !paid.has(i.wallet.toLowerCase())).map((i) => i.wallet);
-  if (!previous) return { firstRun: true, changes: [], newWallets };
+  // Only wallets that haven't been paid before can be the lookalike; known-good wallets are the reference.
+  const lookalikes = findLookalikes(
+    next.filter((i) => !paid.has(i.wallet.toLowerCase())),
+    [...paidBefore, ...next],
+  );
+  if (!previous) return { firstRun: true, changes: [], newWallets, lookalikes };
 
   const key = (i: RunItem) => i.employeeId ?? `wallet:${i.wallet.toLowerCase()}`;
   const before = new Map(previous.map((i) => [key(i), i]));
@@ -50,5 +58,5 @@ export function reviewRun(previous: RunItem[] | null, next: RunItem[], paidWalle
     changes.push({ kind: "removed", name: gone.name, amount: gone.amount, token: gone.token });
   }
   changes.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.name.localeCompare(b.name));
-  return { firstRun: false, changes, newWallets };
+  return { firstRun: false, changes, newWallets, lookalikes };
 }

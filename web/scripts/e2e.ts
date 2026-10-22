@@ -217,7 +217,7 @@ async function main() {
   });
 
   await step("server verifies the transaction on-chain and marks the run paid", async () => {
-    assert.equal((await api(`/api/runs/${run.id}/submit`, { body: { txHash } })).status, 200);
+    assert.equal((await api(`/api/runs/${run.id}/submit`, { body: { txHash, verifiedWallets: RECIPIENTS } })).status, 200);
     const res = await api(`/api/runs/${run.id}/confirm`, { body: {} });
     assert.equal(res.status, 200);
     assert.equal(res.body.run.status, "confirmed", JSON.stringify(res.body));
@@ -245,6 +245,35 @@ async function main() {
     await api(`/api/employees/${maya.id}`, { method: "PATCH", body: maya });
   });
 
+  await step("warns when a new wallet mimics one already paid (address poisoning)", async () => {
+    // Same first 4 and last 4 characters as Priya's paid wallet, different in between.
+    const fake = getAddress("0x7099" + "1".repeat(32) + "79c8");
+    const add = await api("/api/employees", { body: { name: "Priya (new wallet)", wallet: fake, amount: "1", token: "USDC" } });
+    assert.equal(add.status, 201, JSON.stringify(add.body));
+    const res = await api("/api/runs", { body: { chainId: 31337 } });
+    assert.deepEqual(
+      res.body.review.lookalikes.map((l: { wallet: string; resemblesName: string }) => `${l.wallet}~${l.resemblesName}`),
+      [`${fake}~Priya Nair`],
+    );
+    await api(`/api/employees/${add.body.employee.id}`, { method: "DELETE" });
+  });
+
+  await step("records when the run settled, its block, network fee and USD rate", async () => {
+    const res = await api("/api/records");
+    assert.equal(res.status, 200);
+    const paid = res.body.runs.find((r: { run: { id: string } }) => r.run.id === run.id);
+    assert.ok(paid, "paid run missing from records");
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+    assert.equal(paid.run.blockNumber, receipt.blockNumber.toString());
+    assert.ok(Number(paid.run.networkFee) > 0, `fee ${paid.run.networkFee}`);
+    assert.ok(Math.abs(new Date(paid.run.paidAt).getTime() - Date.now()) < 10 * 60_000);
+    assert.equal(paid.run.usdRates.USDC.rate, "1");
+    assert.match(paid.run.usdRates.USDC.source, /^par/);
+    assert.equal(paid.items.length, 3);
+    assert.equal((await api("/api/records?year=2026;drop table")).status, 400);
+    assert.equal((await api("/api/records?year=1e3")).status, 400);
+  });
+
   await step("returns 404, not a server error, for malformed ids", async () => {
     assert.equal((await api("/api/runs/not-a-uuid")).status, 404);
     assert.equal((await api("/api/employees/not-a-uuid", { method: "DELETE" })).status, 404);
@@ -252,7 +281,10 @@ async function main() {
 
   await step("won't mark a run paid using another run's transaction", async () => {
     const next = await api("/api/runs", { body: { chainId: 31337 } });
-    await api(`/api/runs/${next.body.run.id}/submit`, { body: { txHash } });
+    // Junk and foreign addresses in the "confirmed wallets" list are dropped, not logged as confirmed.
+    await api(`/api/runs/${next.body.run.id}/submit`, {
+      body: { txHash, verifiedWallets: [RECIPIENTS[0].toLowerCase(), "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", "<script>", 7, null] },
+    });
     const res = await api(`/api/runs/${next.body.run.id}/confirm`, { body: {} });
     assert.equal(res.body.run.status, "failed");
     assert.match(res.body.run.failureReason, /didn't pay this run/);
@@ -262,6 +294,38 @@ async function main() {
     const { body } = await api("/api/runs");
     const statuses = body.runs.map((r: { status: string }) => r.status);
     assert.ok(statuses.includes("confirmed") && statuses.includes("failed"), statuses.join(","));
+  });
+
+  await step("logs who changed what, including wallet changes, in an append-only activity log", async () => {
+    const { body } = await api("/api/activity");
+    const actions = body.activity.map((a: { action: string }) => a.action);
+    for (const a of ["signed_in", "people_imported", "person_updated", "person_added", "person_removed", "run_sent", "run_paid", "run_failed"]) {
+      assert.ok(actions.includes(a), `missing ${a} in ${actions.join(",")}`);
+    }
+    type Entry = { action: string; actor: string; detail: { changes?: { wallet?: string[] } } };
+    const walletChanges = body.activity.filter((a: Entry) => a.action === "person_updated" && a.detail.changes?.wallet);
+    const change = walletChanges.find((a: Entry) => a.detail.changes!.wallet![0] === RECIPIENTS[1]);
+    assert.deepEqual(change?.detail.changes.wallet, [RECIPIENTS[1], "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"]);
+    assert.equal(change.actor, privateKeyToAccount(KEYS.treasury).address);
+    const sent = body.activity.filter((a: { action: string }) => a.action === "run_sent");
+    assert.deepEqual(sent[0].detail.verifiedWallets, [RECIPIENTS[0]]); // newest first: the junk list was filtered
+    assert.deepEqual(sent[1].detail.verifiedWallets, [...RECIPIENTS]);
+    assert.equal((await api("/api/activity", { method: "DELETE" })).status, 405);
+    assert.equal((await api("/api/activity", { body: { action: "run_paid" } })).status, 405);
+  });
+
+  await step("saves company settings and rejects bad or extra fields", async () => {
+    const ok = await api("/api/me", { method: "PATCH", body: { name: "Northwind Labs", payDay: 31 } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.org.payDay, 31);
+    assert.equal((await api("/api/me", { method: "PATCH", body: { payDay: 30 } })).status, 400);
+    assert.equal((await api("/api/me", { method: "PATCH", body: { name: " " } })).status, 400);
+    const takeover = await api("/api/me", { method: "PATCH", body: { ownerAddress: privateKeyToAccount(KEYS.otherCompany).address } });
+    assert.equal(takeover.status, 400);
+    assert.equal((await api("/api/me")).body.org.ownerAddress, privateKeyToAccount(KEYS.treasury).address);
+    const cleared = await api("/api/me", { method: "PATCH", body: { payDay: null } });
+    assert.equal(cleared.body.org.payDay, null);
+    assert.equal(cleared.body.org.name, "Northwind Labs");
   });
 
   await step("another company's wallet can't see this team", async () => {
@@ -275,6 +339,9 @@ async function main() {
     const mine = await api("/api/employees");
     assert.ok(!mine.body.employees.some((e: { name: string }) => e.name === "Intruder"));
     assert.equal((await other(`/api/runs/${run.id}`)).status, 404);
+    assert.equal((await other("/api/records")).body.runs.length, 0);
+    const theirs = (await other("/api/activity")).body.activity;
+    assert.ok(theirs.every((a: { actor: string }) => a.actor === privateKeyToAccount(KEYS.otherCompany).address));
   });
 
   await step("signing out ends the session", async () => {

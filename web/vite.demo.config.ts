@@ -13,6 +13,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: "@/lib/wagmi", replacement: path.join(src, "demo/wagmi-demo.ts") },
+      { find: "@/lib/download", replacement: path.join(src, "demo/download-demo.ts") },
       { find: /^@\//, replacement: `${src}/` },
     ],
   },

@@ -1,23 +1,35 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useEffect, useRef, useState } from "react";
+import { useAccount, useBalance, usePublicClient } from "wagmi";
 import { usePayroll, type Phase } from "@/hooks/usePayroll";
 import { useTreasury } from "@/hooks/useTreasury";
 import { MAX_PAYMENTS } from "@/lib/abi";
 import { api } from "@/lib/api";
 import { explorerTx, getChainConfig, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
-import { formatAmount, sumByToken, totalsLabel } from "@/lib/money";
+import { formatAmount, formatEth, sumByToken, totalsLabel } from "@/lib/money";
 import type { Change, RunReview } from "@/lib/changes";
+import { chunkAddress } from "@/lib/lookalike";
 import type { RunItem } from "@/lib/payments";
 import type { Run } from "@/lib/types";
+import { useSession } from "@/hooks/useSession";
+import { payDayLabel, scheduleStatus } from "@/lib/schedule";
 import { useEmployees } from "./PeopleTab";
 import { copyText, useToast } from "./toast";
 import { Badge, Button, Card, CheckIcon, CopyIcon, shortAddress, Skeleton, Spinner, XIcon } from "./ui";
 
-export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => void; onOpenHistory: () => void }) {
+export function PayTab({
+  onOpenPeople,
+  onOpenHistory,
+  onOpenSettings,
+}: {
+  onOpenPeople: () => void;
+  onOpenHistory: () => void;
+  onOpenSettings: () => void;
+}) {
   const { phase, prepare, send, reset } = usePayroll();
+  const verifiedRef = useRef<string[]>([]);
   const queryClient = useQueryClient();
   const treasury = useTreasury();
 
@@ -32,10 +44,22 @@ export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => vo
   switch (phase.kind) {
     case "idle":
     case "preparing":
-      return <PayHome preparing={phase.kind === "preparing"} onRun={prepare} onOpenPeople={onOpenPeople} balances={treasury.balances} />;
+      return (
+        <PayHome
+          preparing={phase.kind === "preparing"}
+          onRun={prepare}
+          onOpenPeople={onOpenPeople}
+          onOpenSettings={onOpenSettings}
+          balances={treasury.balances}
+        />
+      );
     case "review":
       return (
-        <Review run={phase.run} items={phase.items} review={phase.review} balances={treasury.balances} onBack={reset} onSend={() => send(phase.run, phase.items)} />
+        <Review run={phase.run} items={phase.items} review={phase.review} balances={treasury.balances} onBack={reset} onSend={(v) => {
+            verifiedRef.current = v;
+            send(phase.run, phase.items, v);
+          }}
+        />
       );
     case "approving":
     case "confirm":
@@ -60,7 +84,7 @@ export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => vo
           title="Payroll not sent"
           message={phase.message}
           onBack={reset}
-          onRetry={phase.run && phase.items ? () => send(phase.run!, phase.items!) : undefined}
+          onRetry={phase.run && phase.items ? () => send(phase.run!, phase.items!, verifiedRef.current) : undefined}
         />
       );
   }
@@ -70,14 +94,17 @@ function PayHome({
   preparing,
   onRun,
   onOpenPeople,
+  onOpenSettings,
   balances,
 }: {
   preparing: boolean;
   onRun: () => void;
   onOpenPeople: () => void;
+  onOpenSettings: () => void;
   balances: Partial<Record<TokenSymbol, bigint>>;
 }) {
   const employees = useEmployees();
+  const me = useSession();
   const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs) });
   const list = employees.data ?? [];
   const last = runs.data?.find((r) => r.status === "confirmed");
@@ -124,6 +151,7 @@ function PayHome({
           </p>
         )}
       </Card>
+      {me.data && <Schedule payDay={me.data.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />}
       {used.length > 0 && (
         <section aria-labelledby="coverage-h" className="flex flex-col gap-3">
           <h2 id="coverage-h" className="text-base font-semibold">Treasury</h2>
@@ -165,6 +193,49 @@ function PayHome({
   );
 }
 
+function Schedule({ payDay, lastPaidAt, onOpenSettings }: { payDay: number | null; lastPaidAt: string | null; onOpenSettings: () => void }) {
+  if (payDay === null) {
+    return (
+      <Card className="flex flex-wrap items-center gap-3 px-5 py-4 text-sm">
+        <CalendarIcon />
+        <span className="flex-1 basis-56 text-ink-2">Set a payday to see when payroll is due and get a calendar reminder.</span>
+        <Button variant="secondary" onClick={onOpenSettings}>Set payday</Button>
+      </Card>
+    );
+  }
+  const st = scheduleStatus(new Date(), payDay, lastPaidAt);
+  const when = st.next.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const paidThisCycle = lastPaidAt !== null && new Date(lastPaidAt).getTime() >= st.next.getTime() - 10 * 86_400_000;
+  return (
+    <Card className={`flex flex-wrap items-center gap-3 px-5 py-4 ${st.missed ? "border-[#F3D9A4] bg-warn-soft" : ""}`}>
+      <CalendarIcon />
+      <span className="flex flex-1 basis-56 flex-col gap-0.5">
+        <span className="text-[15px] font-medium">
+          {paidThisCycle
+            ? `Paid for this cycle · next payday ${when}`
+            : st.daysUntil === 0
+              ? "Payday is today"
+              : `Next payday ${when} · in ${st.daysUntil} ${st.daysUntil === 1 ? "day" : "days"}`}
+        </span>
+        <span className={`text-[13px] ${st.missed ? "font-medium text-warn" : "text-ink-2"}`}>
+          {st.missed
+            ? `Payday ${st.previous.toLocaleDateString(undefined, { month: "short", day: "numeric" })} passed without a paid payroll.`
+            : `${payDayLabel(payDay)}. Wagefold never sends on its own: you review and sign each run.`}
+        </span>
+      </span>
+      <button type="button" onClick={onOpenSettings} className="min-h-10 text-sm font-medium text-brand">Change</button>
+    </Card>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-soft text-brand-dark" aria-hidden="true">
+      <svg className="h-4.5 w-4.5" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+    </span>
+  );
+}
+
 function Review({
   run,
   items,
@@ -178,11 +249,12 @@ function Review({
   review: RunReview;
   balances: Partial<Record<TokenSymbol, bigint>>;
   onBack: () => void;
-  onSend: () => void;
+  onSend: (verifiedWallets: string[]) => void;
 }) {
-  const { chainId } = useAccount();
+  const { chainId, address } = useAccount();
   const toast = useToast();
-  const [checked, setChecked] = useState(false);
+  const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
+  const [allChecked, setAllChecked] = useState(false);
   const cfg = getChainConfig(run.chainId);
   const totals = sumByToken(items);
   const used = TOKEN_SYMBOLS.filter((s) => totals[s] > 0n);
@@ -190,17 +262,37 @@ function Review({
   const wrongChain = chainId !== run.chainId;
   const changedWallets = new Set(review.changes.flatMap((c) => (c.kind === "wallet" ? [c.after.toLowerCase()] : [])));
   const newWallets = new Set(review.newWallets.map((w) => w.toLowerCase()));
-  const toCheck = new Set([...changedWallets, ...newWallets]).size;
+  const lookalikes = new Map(review.lookalikes.map((l) => [l.wallet.toLowerCase(), l]));
+  const toConfirm = items.filter((i) => changedWallets.has(i.wallet.toLowerCase()) || newWallets.has(i.wallet.toLowerCase()));
+  const fee = useNetworkFee(run.chainId, items, newWallets, used.length);
+  const eth = useBalance({ address, chainId: run.chainId });
+  const ethShort = fee !== undefined && eth.data !== undefined && eth.data.value < fee;
+
   const checks = [
     { ok: true, text: `All ${items.length} wallet addresses are valid EVM addresses` },
     {
       ok: short.length === 0,
       text: short.length === 0 ? `Your treasury holds enough: ${totalsLabel(totals)} needed` : `Not enough ${short.join(" and ")} in the treasury for this run`,
     },
+    {
+      ok: !ethShort,
+      text: ethShort ? `Add ETH on ${cfg?.chain.name} to cover the network fee` : `Enough ETH for the network fee`,
+    },
     { ok: items.length <= MAX_PAYMENTS, text: `${items.length} of ${MAX_PAYMENTS} payments allowed in one transaction` },
     { ok: !wrongChain, text: wrongChain ? `Switch your wallet to ${cfg?.chain.name}` : `Paying on ${cfg?.chain.name}` },
   ];
-  const canSend = checks.every((c) => c.ok) && (toCheck === 0 || checked);
+  const walletsOk = review.firstRun ? allChecked : toConfirm.every((i) => confirmed.has(i.wallet.toLowerCase()));
+  const pending = review.firstRun ? (allChecked ? 0 : items.length) : toConfirm.filter((i) => !confirmed.has(i.wallet.toLowerCase())).length;
+  const canSend = checks.every((c) => c.ok) && walletsOk;
+  const verified = review.firstRun ? items.map((i) => i.wallet) : toConfirm.map((i) => i.wallet);
+  const toggle = (wallet: string) =>
+    setConfirmed((prev) => {
+      const next = new Set(prev);
+      const k = wallet.toLowerCase();
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -212,6 +304,21 @@ function Review({
         <h1 className="text-[28px] font-semibold tracking-tight sm:text-[32px]">Review payroll</h1>
         <p className="mt-1 text-base text-ink-2">Pulled {items.length} {items.length === 1 ? "person" : "people"} from People just now.</p>
       </div>
+
+      {review.lookalikes.length > 0 && (
+        <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-[#F1C4BF] bg-bad-soft p-5 text-sm text-bad-text">
+          <p className="text-base font-semibold">
+            {review.lookalikes.length === 1 ? "One wallet looks like another wallet" : `${review.lookalikes.length} wallets look like other wallets`} you&apos;ve paid
+          </p>
+          {review.lookalikes.map((l) => (
+            <p key={l.wallet}>
+              <span className="font-semibold">{l.name}</span>: <span className="font-mono">{shortAddress(l.wallet)}</span> looks like {l.resemblesName}&apos;s{" "}
+              <span className="font-mono">{shortAddress(l.resembles)}</span> but is a different address.
+            </p>
+          ))}
+          <p>This is how address-poisoning scams work. Don&apos;t send until you&apos;ve checked the full address with the person on a call.</p>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {used.map((s) => (
@@ -226,7 +333,9 @@ function Review({
         <Card className="flex flex-col gap-1 p-5">
           <span className="text-sm text-ink-2">Transactions</span>
           <span className="font-mono text-[26px] font-medium tracking-tight">1</span>
-          <span className="text-[13px] text-ink-2">Plus a token approval if your wallet needs one</span>
+          <span className="text-[13px] text-ink-2">
+            Network fee about {fee === undefined ? "…" : `${formatEth(fee)} ETH`}, plus a token approval if your wallet needs one
+          </span>
         </Card>
       </div>
 
@@ -243,6 +352,45 @@ function Review({
         ))}
       </Card>
 
+      {!review.firstRun && toConfirm.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-5 pt-4">
+            <h2 className="text-base font-semibold">Confirm {toConfirm.length === 1 ? "this wallet" : `these ${toConfirm.length} wallets`} with each person</h2>
+            <p className="mt-1 text-sm text-ink-2">
+              Read the full address back to them on a call or in person. Don&apos;t rely on email or chat: those are how fake &ldquo;new wallet&rdquo; requests arrive.
+            </p>
+          </div>
+          <ul className="mt-3 divide-y divide-line-soft border-t border-line">
+            {toConfirm.map((i) => {
+              const k = i.wallet.toLowerCase();
+              const like = lookalikes.get(k);
+              return (
+                <li key={i.wallet} className={`flex flex-col gap-2.5 px-5 py-4 ${like ? "bg-[#FFF8F7]" : ""}`}>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-semibold">{i.name}</span>
+                    {like ? <Badge tone="bad">Looks like {like.resemblesName}&apos;s wallet</Badge> : changedWallets.has(k) ? <Badge tone="bad">Wallet changed</Badge> : <Badge tone="warn">First payment</Badge>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyText(i.wallet, toast, "Address copied")}
+                    title="Copy address"
+                    className="flex flex-wrap gap-x-2 gap-y-1 self-start rounded-lg bg-line-soft px-3 py-2 text-left font-mono text-[15px] tracking-wide text-ink hover:bg-line"
+                  >
+                    {chunkAddress(i.wallet).map((c, n) => (
+                      <span key={n} className={n === 0 || n === 9 ? "font-semibold" : ""}>{c}</span>
+                    ))}
+                  </button>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                    <input type="checkbox" checked={confirmed.has(k)} onChange={() => toggle(i.wallet)} className="h-5 w-5 flex-none accent-brand" />
+                    I confirmed this full address with {i.name}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <h2 className="px-5 py-4 text-base font-semibold">Who gets paid</h2>
         <ul className="divide-y divide-line-soft border-t border-line">
@@ -255,7 +403,7 @@ function Review({
                   {i.role && <span className="text-ink-2"> · {i.role}</span>}
                 </span>
                 <span className="flex items-center gap-2">
-                  {changedWallets.has(w) ? <Badge tone="bad">Wallet changed</Badge> : newWallets.has(w) && !review.firstRun ? <Badge tone="warn">First payment</Badge> : null}
+                  {lookalikes.has(w) ? <Badge tone="bad">Lookalike</Badge> : changedWallets.has(w) ? <Badge tone="bad">Wallet changed</Badge> : newWallets.has(w) && !review.firstRun ? <Badge tone="warn">First payment</Badge> : null}
                   <button
                     type="button"
                     title={`${i.wallet} (click to copy)`}
@@ -274,31 +422,44 @@ function Review({
         </ul>
       </Card>
 
-      {toCheck > 0 && (
+      {review.firstRun && (
         <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#F3D9A4] bg-warn-soft p-4 text-sm text-warn">
-          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
+          <input type="checkbox" checked={allChecked} onChange={(e) => setAllChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
           <span>
-            <span className="font-semibold">
-              {review.firstRun
-                ? `I've checked all ${items.length} wallet addresses with each person.`
-                : `I've confirmed the ${toCheck} ${toCheck === 1 ? "wallet" : "wallets"} marked above with ${toCheck === 1 ? "that person" : "each person"}.`}
-            </span>{" "}
-            Payments to a wrong address can&apos;t be reversed, and changed addresses are a common way payroll gets stolen.
+            <span className="font-semibold">I&apos;ve checked all {items.length} wallet addresses with each person.</span> Payments to a wrong address can&apos;t be
+            reversed, and changed addresses are a common way payroll gets stolen.
           </span>
         </label>
       )}
 
       <div className="flex flex-col gap-2.5">
-        <Button size="lg" className="min-h-[60px] text-lg" onClick={onSend} disabled={!canSend}>
+        <Button size="lg" className="min-h-[60px] text-lg" onClick={() => onSend(verified)} disabled={!canSend}>
           Send to {items.length} {items.length === 1 ? "person" : "people"}
         </Button>
         <p className="text-center text-[13px] text-ink-2">
-          {toCheck > 0 && !checked ? "Confirm the wallet check above to continue." : "Everyone is paid in one transaction from your wallet. Payments can't be reversed."}
+          {!walletsOk
+            ? review.firstRun
+              ? "Confirm the wallet check above to continue."
+              : `Confirm ${pending} more ${pending === 1 ? "wallet" : "wallets"} above to continue.`
+            : "Everyone is paid in one transaction from your wallet. Payments can't be reversed."}
         </p>
       </div>
     </div>
   );
 }
+
+/**
+ * A rough fee for the payroll transaction, from gas measured in the contract tests: about 31k gas
+ * for a first payment to a wallet, 14k for one paid before, plus approvals.
+ */
+function useNetworkFee(chainId: number, items: RunItem[], newWallets: Set<string>, tokens: number): bigint | undefined {
+  const client = usePublicClient({ chainId });
+  const price = useQuery({ queryKey: ["gasPrice", chainId], queryFn: () => client!.getGasPrice(), enabled: !!client, staleTime: 30_000 });
+  if (price.data === undefined) return undefined;
+  const gas = items.reduce((g, i) => g + (newWallets.has(i.wallet.toLowerCase()) ? 31_000n : 14_000n), 60_000n) + BigInt(tokens) * 46_000n;
+  return gas * price.data;
+}
+
 
 function Changes({ review }: { review: RunReview }) {
   if (review.firstRun) {
@@ -443,7 +604,9 @@ function Done({ run, items, onBack, onOpenHistory }: { run: Run; items: RunItem[
           <h1 className="text-[32px] font-semibold tracking-tight">
             Paid {items.length} {items.length === 1 ? "person" : "people"} in one transaction
           </h1>
-          <p className="tabular mt-2 text-base text-ink-2">{totalsLabel(run.totals)} · verified on-chain</p>
+          <p className="tabular mt-2 text-base text-ink-2">
+            {totalsLabel(run.totals)} · verified on-chain{run.networkFee ? ` · network fee ${formatEth(run.networkFee)} ETH` : ""}
+          </p>
         </div>
         {run.txHash && (
           <div className="flex flex-wrap items-center justify-center gap-2.5 text-sm">
@@ -454,7 +617,7 @@ function Done({ run, items, onBack, onOpenHistory }: { run: Run; items: RunItem[
         )}
         <div className="flex flex-wrap justify-center gap-3">
           <Button variant="secondary" onClick={onBack}>Back to Pay</Button>
-          <Button variant="secondary" onClick={onOpenHistory}>See history</Button>
+          <Button variant="secondary" onClick={onOpenHistory}>Payslips and records</Button>
         </div>
       </Card>
       <Card className="px-5 py-1">

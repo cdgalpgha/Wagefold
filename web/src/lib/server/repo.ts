@@ -1,11 +1,13 @@
 import "server-only";
+import { formatEther } from "viem";
 import type { TokenSymbol } from "../chains";
+import type { Known } from "../lookalike";
 import { canonical } from "../money";
 import { onchainRef, type RunItem } from "../payments";
 import type { EmployeeInput } from "../validation";
 import { getDb } from "./db";
 
-export type Organization = { id: string; ownerAddress: string; name: string };
+export type Organization = { id: string; ownerAddress: string; name: string; payDay: number | null };
 export type Employee = { id: string; name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
 export type RunStatus = "draft" | "submitted" | "confirmed" | "failed";
 export type Run = {
@@ -19,6 +21,16 @@ export type Run = {
   totals: Record<string, string>;
   createdAt: string;
   confirmedAt: string | null;
+  paidAt: string | null;
+  blockNumber: string | null;
+  networkFee: string | null;
+  usdRates: Partial<Record<TokenSymbol, { rate: string; source: string }>> | null;
+};
+export type RunRecord = {
+  paidAt: Date;
+  blockNumber: bigint;
+  networkFeeWei: bigint;
+  usdRates: Partial<Record<TokenSymbol, { rate: string; source: string }>>;
 };
 
 type EmployeeRow = { id: string; name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
@@ -33,6 +45,10 @@ type RunRow = {
   totals: Record<string, string> | string;
   created_at: Date | string;
   confirmed_at: Date | string | null;
+  paid_at: Date | string | null;
+  block_number: string | null;
+  network_fee_wei: string | null;
+  usd_rates: RunRecord["usdRates"] | string | null;
 };
 
 const iso = (d: Date | string | null) => (d === null ? null : new Date(d).toISOString());
@@ -49,6 +65,10 @@ const toRun = (r: RunRow): Run => ({
   totals: typeof r.totals === "string" ? JSON.parse(r.totals) : r.totals,
   createdAt: iso(r.created_at)!,
   confirmedAt: iso(r.confirmed_at),
+  paidAt: iso(r.paid_at),
+  blockNumber: r.block_number,
+  networkFee: r.network_fee_wei === null ? null : formatEther(BigInt(r.network_fee_wei)),
+  usdRates: typeof r.usd_rates === "string" ? JSON.parse(r.usd_rates) : r.usd_rates,
 });
 
 export class DuplicateWalletError extends Error {}
@@ -59,29 +79,40 @@ function isUniqueViolation(err: unknown) {
 
 // Organizations ----------------------------------------------------------------------------------
 
+type OrgRow = { id: string; owner_address: string; name: string; pay_day: number | null };
+const ORG_COLUMNS = `id, owner_address, name, pay_day`;
+const toOrg = (r: OrgRow): Organization => ({ id: r.id, ownerAddress: r.owner_address, name: r.name, payDay: r.pay_day });
+
 export async function upsertOrganization(ownerAddress: string): Promise<Organization> {
   const db = await getDb();
-  const { rows } = await db.query<{ id: string; owner_address: string; name: string }>(
+  const { rows } = await db.query<OrgRow>(
     `insert into organizations (owner_address) values ($1)
      on conflict (owner_address) do update set owner_address = excluded.owner_address
-     returning id, owner_address, name`,
+     returning ${ORG_COLUMNS}`,
     [ownerAddress],
   );
-  return { id: rows[0].id, ownerAddress: rows[0].owner_address, name: rows[0].name };
+  return toOrg(rows[0]);
 }
 
 export async function getOrganization(orgId: string): Promise<Organization | null> {
   const db = await getDb();
-  const { rows } = await db.query<{ id: string; owner_address: string; name: string }>(
-    `select id, owner_address, name from organizations where id = $1`,
-    [orgId],
-  );
-  return rows[0] ? { id: rows[0].id, ownerAddress: rows[0].owner_address, name: rows[0].name } : null;
+  const { rows } = await db.query<OrgRow>(`select ${ORG_COLUMNS} from organizations where id = $1`, [orgId]);
+  return rows[0] ? toOrg(rows[0]) : null;
 }
 
-export async function renameOrganization(orgId: string, name: string): Promise<void> {
+export async function updateOrganization(
+  orgId: string,
+  patch: { name?: string; payDay?: number | null },
+): Promise<Organization | null> {
   const db = await getDb();
-  await db.query(`update organizations set name = $2 where id = $1`, [orgId, name]);
+  const { rows } = await db.query<OrgRow>(
+    `update organizations set
+       name = coalesce($2, name),
+       pay_day = case when $3::boolean then $4::smallint else pay_day end
+     where id = $1 returning ${ORG_COLUMNS}`,
+    [orgId, patch.name ?? null, patch.payDay !== undefined, patch.payDay ?? null],
+  );
+  return rows[0] ? toOrg(rows[0]) : null;
 }
 
 // Employees --------------------------------------------------------------------------------------
@@ -127,15 +158,28 @@ export async function updateEmployee(orgId: string, id: string, input: EmployeeI
   }
 }
 
-export async function deleteEmployee(orgId: string, id: string): Promise<boolean> {
+export async function getEmployee(orgId: string, id: string): Promise<Employee | null> {
   const db = await getDb();
-  const { rows } = await db.query(`delete from employees where org_id = $1 and id = $2 returning id`, [orgId, id]);
-  return rows.length > 0;
+  const { rows } = await db.query<EmployeeRow>(
+    `select id, name, role, wallet, amount::text as amount, token from employees where org_id = $1 and id = $2`,
+    [orgId, id],
+  );
+  return rows[0] ? toEmployee(rows[0]) : null;
+}
+
+export async function deleteEmployee(orgId: string, id: string): Promise<Employee | null> {
+  const db = await getDb();
+  const { rows } = await db.query<EmployeeRow>(
+    `delete from employees where org_id = $1 and id = $2 returning id, name, role, wallet, amount::text as amount, token`,
+    [orgId, id],
+  );
+  return rows[0] ? toEmployee(rows[0]) : null;
 }
 
 // Payroll runs -----------------------------------------------------------------------------------
 
-const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, recipient_count, totals, created_at, confirmed_at`;
+const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, recipient_count, totals, created_at, confirmed_at,
+  paid_at, block_number::text as block_number, network_fee_wei::text as network_fee_wei, usd_rates`;
 
 /**
  * Snapshots every employee into a new draft run. The snapshot is what gets paid and later verified
@@ -200,15 +244,29 @@ export async function lastPaidRunItems(orgId: string): Promise<RunItem[] | null>
   return rows[0] ? runItems(rows[0].id) : null;
 }
 
-/** Every wallet this organization has successfully paid at least once. */
-export async function paidWallets(orgId: string): Promise<string[]> {
+/** Every wallet this organization has successfully paid at least once, with the name it was paid under. */
+export async function paidWallets(orgId: string): Promise<Known[]> {
   const db = await getDb();
-  const { rows } = await db.query<{ wallet: string }>(
-    `select distinct lower(i.wallet) as wallet from payroll_items i
-     join payroll_runs r on r.id = i.run_id where r.org_id = $1 and r.status = 'confirmed'`,
+  const { rows } = await db.query<Known>(
+    `select distinct on (lower(i.wallet)) i.wallet, i.name from payroll_items i
+     join payroll_runs r on r.id = i.run_id where r.org_id = $1 and r.status = 'confirmed'
+     order by lower(i.wallet), r.confirmed_at desc`,
     [orgId],
   );
-  return rows.map((r) => r.wallet);
+  return rows;
+}
+
+/** Paid runs with their items, oldest first, optionally for one calendar year (UTC). */
+export async function paidRuns(orgId: string, year?: number): Promise<{ run: Run; items: RunItem[] }[]> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `select ${RUN_COLUMNS} from payroll_runs
+     where org_id = $1 and status = 'confirmed'
+       and ($2::int is null or extract(year from coalesce(paid_at, confirmed_at) at time zone 'UTC') = $2::int)
+     order by coalesce(paid_at, confirmed_at)`,
+    [orgId, year ?? null],
+  );
+  return Promise.all(rows.map(async (r) => ({ run: toRun(r), items: await runItems(r.id) })));
 }
 
 export async function listRuns(orgId: string): Promise<Run[]> {
@@ -233,14 +291,53 @@ export async function markRunSubmitted(orgId: string, id: string, txHash: string
 export async function markRunResult(
   orgId: string,
   id: string,
-  result: { status: "confirmed" } | { status: "failed"; reason: string },
+  result: { status: "confirmed"; record: RunRecord } | { status: "failed"; reason: string },
 ): Promise<Run | null> {
   const db = await getDb();
+  const record = result.status === "confirmed" ? result.record : null;
   const { rows } = await db.query<RunRow>(
     `update payroll_runs
-     set status = $3, failure_reason = $4, confirmed_at = case when $3 = 'confirmed' then now() else null end
+     set status = $3, failure_reason = $4, confirmed_at = case when $3 = 'confirmed' then now() else null end,
+         paid_at = $5, block_number = $6, network_fee_wei = $7, usd_rates = $8
      where org_id = $1 and id = $2 and status = 'submitted' returning ${RUN_COLUMNS}`,
-    [orgId, id, result.status, result.status === "failed" ? result.reason : null],
+    [
+      orgId,
+      id,
+      result.status,
+      result.status === "failed" ? result.reason : null,
+      record?.paidAt.toISOString() ?? null,
+      record?.blockNumber.toString() ?? null,
+      record?.networkFeeWei.toString() ?? null,
+      record ? JSON.stringify(record.usdRates) : null,
+    ],
   );
   return rows[0] ? toRun(rows[0]) : null;
+}
+
+// Activity log -----------------------------------------------------------------------------------
+
+export type ActivityRow = { id: string; at: string; actor: string; action: string; detail: Record<string, unknown> };
+
+/** Records who did what. Logging must never block the action it describes, so failures are reported, not thrown. */
+export async function logActivity(orgId: string, actor: string, action: string, detail: Record<string, unknown> = {}) {
+  try {
+    const db = await getDb();
+    await db.query(`insert into audit_events (org_id, actor, action, detail) values ($1, $2, $3, $4)`, [
+      orgId,
+      actor,
+      action,
+      JSON.stringify(detail),
+    ]);
+  } catch (err) {
+    console.error("activity log write failed", err);
+  }
+}
+
+export async function listActivity(orgId: string, limit = 200): Promise<ActivityRow[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string; at: Date | string; actor: string; action: string; detail: Record<string, unknown> | string }>(
+    `select id::text as id, at, actor, action, detail from audit_events where org_id = $1 order by audit_events.id desc limit $2`,
+    [orgId, limit],
+  );
+  return rows.map((r) => ({ ...r, at: iso(r.at)!, detail: typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail }));
 }
