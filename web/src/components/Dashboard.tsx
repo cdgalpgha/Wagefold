@@ -16,6 +16,7 @@ import { PayTab } from "./PayTab";
 import { PeopleTab } from "./PeopleTab";
 import { SettingsTab } from "./SettingsTab";
 import { ThemeToggle } from "./ThemeToggle";
+import { ROLE_LABEL } from "@/lib/roles";
 import { shortAddress } from "./ui";
 
 type Tab = "pay" | "people" | "history" | "invoices" | "settings";
@@ -46,6 +47,7 @@ export function Dashboard({ me }: { me: Me }) {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
           <Logo className="h-7" />
+          <OrgSwitcher me={me} />
           <nav aria-label="Main" className="order-last -mx-1 flex w-[calc(100%+0.5rem)] gap-1 overflow-x-auto px-1 sm:order-none sm:mx-0 sm:w-auto sm:flex-1 sm:px-0">
             {TABS.map((t) => (
               <button
@@ -67,10 +69,12 @@ export function Dashboard({ me }: { me: Me }) {
             <span className="flex flex-col">
               <span className="text-[13px] font-semibold">
                 {connector?.name ?? "Wallet"} · <span className="font-mono font-medium">{shortAddress(me.address)}</span>
+                <span className="ml-1.5 rounded-full bg-brand-soft px-1.5 py-px text-[11px] font-semibold text-brand-dark">{ROLE_LABEL[me.role]}</span>
               </span>
               <span className="tabular hidden text-xs text-ink-2 sm:block">
                 {cfg
-                  ? symbols.map((s) => `${balances[s] === undefined ? "…" : formatAmount(balances[s]!)} ${s}`).join(" · ") +
+                  ? (me.role === "owner" ? "" : "Treasury ") +
+                    symbols.map((s) => `${balances[s] === undefined ? "…" : formatAmount(balances[s]!)} ${s}`).join(" · ") +
                     ` on ${cfg.chain.name}`
                   : "Unsupported network"}
               </span>
@@ -99,5 +103,29 @@ export function Dashboard({ me }: { me: Me }) {
         )}
       </main>
     </div>
+  );
+}
+
+/** For wallets on more than one company's team: switch between them. Membership is checked by the server. */
+function OrgSwitcher({ me }: { me: Me }) {
+  const queryClient = useQueryClient();
+  if (me.memberships.length < 2) return null;
+  return (
+    <select
+      aria-label="Company"
+      value={me.org.id}
+      onChange={async (e) => {
+        await api("/api/session/switch", { body: { orgId: e.target.value } }).catch(() => undefined);
+        queryClient.clear();
+        await queryClient.invalidateQueries();
+      }}
+      className="hidden min-h-9 max-w-[200px] rounded-lg border border-line bg-surface px-2 text-sm text-ink md:block"
+    >
+      {me.memberships.map((m) => (
+        <option key={m.orgId} value={m.orgId}>
+          {m.name} · {ROLE_LABEL[m.role]}
+        </option>
+      ))}
+    </select>
   );
 }

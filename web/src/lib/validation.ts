@@ -3,14 +3,18 @@ import { z } from "zod";
 import { TOKEN_SYMBOLS } from "./chains";
 import { PREFIX_RE } from "./invoices";
 import { normalizeAmount } from "./money";
+import { ASSIGNABLE_ROLES, MAX_APPROVALS } from "./roles";
 import { isPayDay } from "./schedule";
+
+/** No line breaks or other control characters: names appear inside messages people sign. */
+const oneLine = (v: string) => !/[\u0000-\u001f\u007f\u2028\u2029]/.test(v);
 
 // Invoices are one page; an address is printed in full, so it has to stay short.
 const fewLines = (v: string) => v.split("\n").length <= 6;
 
 export const employeeInput = z.object({
-  name: z.string().trim().min(1, "Add a name.").max(80, "Keep the name under 80 characters."),
-  role: z.string().trim().max(80, "Keep the role under 80 characters.").default(""),
+  name: z.string().trim().min(1, "Add a name.").max(80, "Keep the name under 80 characters.").refine((v) => oneLine(v), "The name must be one line."),
+  role: z.string().trim().max(80, "Keep the role under 80 characters.").refine((v) => oneLine(v), "The role must be one line.").default(""),
   wallet: z
     .string()
     .trim()
@@ -45,9 +49,9 @@ export type EmployeeInput = z.infer<typeof employeeInput>;
 /** Company settings. Strict: unknown fields (such as ownerAddress) are rejected, not ignored. */
 export const orgPatchInput = z
   .object({
-    name: z.string().trim().min(1, "Company name can't be empty.").max(80, "Company name must be 80 characters or fewer.").optional(),
+    name: z.string().trim().min(1, "Company name can't be empty.").max(80, "Company name must be 80 characters or fewer.").refine(oneLine, "Company name must be one line.").optional(),
     payDay: z.union([z.null(), z.number().refine(isPayDay, "Payday must be a day from 1 to 28, or the last day of the month.")]).optional(),
-    legalName: z.string().trim().max(120, "Keep the legal name under 120 characters.").optional(),
+    legalName: z.string().trim().max(120, "Keep the legal name under 120 characters.").refine(oneLine, "Legal name must be one line.").optional(),
     address: z.string().trim().max(300, "Keep the address under 300 characters.").refine(fewLines, "Keep the address to 6 lines.").optional(),
     taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").optional(),
     invoicePrefix: z.string().trim().regex(PREFIX_RE, "Invoice prefix: up to 12 letters, numbers, - / or _.").optional(),
@@ -107,3 +111,28 @@ function splitCsvLine(line: string): string[] {
   out.push(cur);
   return out;
 }
+
+/** A teammate: their wallet, a display name, and a role other than owner. */
+export const memberInput = z
+  .object({
+    address: z
+      .string()
+      .trim()
+      .refine((v) => isAddress(v, { strict: true }), "Enter a valid wallet address (check the capital letters if you copied it).")
+      .refine((v) => v.toLowerCase() !== zeroAddress, "That is the zero address.")
+      .transform((v) => getAddress(v)),
+    name: z.string().trim().min(1, "Add a name.").max(80, "Keep the name under 80 characters.").refine((v) => oneLine(v), "The name must be one line."),
+    role: z.enum(ASSIGNABLE_ROLES, { errorMap: () => ({ message: "Role must be admin, preparer or viewer." }) }),
+  })
+  .strict();
+
+export const memberPatchInput = z
+  .object({
+    name: memberInput.shape.name.optional(),
+    role: memberInput.shape.role.optional(),
+  })
+  .strict();
+
+export const policyInput = z
+  .object({ approvalsRequired: z.number().int().min(0).max(MAX_APPROVALS, `Up to ${MAX_APPROVALS} approvals.`) })
+  .strict();

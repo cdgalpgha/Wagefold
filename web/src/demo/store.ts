@@ -1,5 +1,6 @@
 /** Per-viewer persistence for the demo. Storage can be unavailable (private mode, previews), so it degrades to memory. */
-const KEY = "wagefold-demo-v1";
+// v2 added teams and approvals; older saved demos start fresh.
+const KEY = "wagefold-demo-v2";
 
 export function load<T>(fallback: () => T): T {
   try {

@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useBalance, usePublicClient } from "wagmi";
-import { usePayroll, type Phase } from "@/hooks/usePayroll";
+import { usePayroll, type Phase, type ReviewMode } from "@/hooks/usePayroll";
 import { useTreasury } from "@/hooks/useTreasury";
 import { MAX_PAYMENTS } from "@/lib/abi";
 import { api } from "@/lib/api";
@@ -12,7 +12,9 @@ import { formatAmount, formatEth, sumByToken, totalsLabel } from "@/lib/money";
 import type { Change, RunReview } from "@/lib/changes";
 import { chunkAddress } from "@/lib/lookalike";
 import type { RunItem } from "@/lib/payments";
-import type { Run } from "@/lib/types";
+import { can } from "@/lib/roles";
+import type { Me, Run, RunDetail } from "@/lib/types";
+import { ApprovalPanel, OpenRunCard, runActions, useNameOf } from "./Approvals";
 import { useSession } from "@/hooks/useSession";
 import { payDayLabel, scheduleStatus } from "@/lib/schedule";
 import { useEmployees } from "./PeopleTab";
@@ -28,37 +30,84 @@ export function PayTab({
   onOpenHistory: () => void;
   onOpenSettings: () => void;
 }) {
-  const { phase, prepare, send, reset } = usePayroll();
+  const { phase, prepare, open, request, approve, reject, cancel, recheck, send, reset } = usePayroll();
   const verifiedRef = useRef<string[]>([]);
   const queryClient = useQueryClient();
   const treasury = useTreasury();
+  const session = useSession();
+  const toast = useToast();
+  const me = session.data;
 
   useEffect(() => {
-    if (phase.kind === "done" || phase.kind === "failed") {
+    // Any finished step can change the run list, approvals and invoices.
+    if (phase.kind === "idle" || phase.kind === "done" || phase.kind === "failed") {
       queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["run"] });
+      queryClient.invalidateQueries({ queryKey: ["activity"] });
       treasury.refetch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.kind]);
+
+  /** Runs an approval action and reports the outcome; errors stay on the current screen. */
+  const act = async (fn: () => Promise<void>, done: string) => {
+    try {
+      await fn();
+      toast(done, { tone: "good" });
+    } catch (err) {
+      toast((err as Error).message.replace(/^.*User (rejected|denied).*$/s, "Cancelled in your wallet."), { tone: "bad" });
+    }
+  };
+
+  if (!me) return null;
 
   switch (phase.kind) {
     case "idle":
     case "preparing":
       return (
         <PayHome
+          me={me}
           preparing={phase.kind === "preparing"}
           onRun={prepare}
+          onOpenRun={(run, mode) => open(run.id, mode)}
+          onCancelRun={(run) => act(() => cancel(run), "Payroll cancelled")}
+          onRecheck={(run) => recheck(run, [])}
           onOpenPeople={onOpenPeople}
           onOpenSettings={onOpenSettings}
           balances={treasury.balances}
         />
       );
+    case "loading":
+      return (
+        <div className="flex justify-center py-24 text-brand" role="status" aria-label="Loading">
+          <Spinner className="h-7 w-7" />
+        </div>
+      );
     case "review":
       return (
-        <Review run={phase.run} items={phase.items} review={phase.review} balances={treasury.balances} onBack={reset} onSend={(v) => {
+        <Review
+          me={me}
+          mode={phase.mode}
+          detail={phase.detail}
+          run={phase.run}
+          items={phase.items}
+          review={phase.review}
+          balances={treasury.balances}
+          treasury={treasury.address}
+          onBack={reset}
+          onSend={(v) => {
             verifiedRef.current = v;
             send(phase.run, phase.items, v);
           }}
+          onRequest={(v) =>
+            act(
+              () => request(phase.run, v),
+              me.org.approvalsRequired > 0 ? "Sent for approval. Approvers will see it on their Pay page." : "Sent to the treasury wallet for signing.",
+            )
+          }
+          onApprove={() => act(() => approve(phase.run), "Approved with your wallet signature")}
+          onReject={(reason) => act(() => reject(phase.run, reason), "Payroll sent back to the preparer")}
+          onCancel={() => act(() => cancel(phase.run), "Payroll cancelled")}
         />
       );
     case "approving":
@@ -91,21 +140,34 @@ export function PayTab({
 }
 
 function PayHome({
+  me: session,
   preparing,
   onRun,
+  onOpenRun,
+  onCancelRun,
+  onRecheck,
   onOpenPeople,
   onOpenSettings,
   balances,
 }: {
+  me: Me;
   preparing: boolean;
   onRun: () => void;
+  onOpenRun: (run: Run, mode: "approve" | "send" | "view") => void;
+  onCancelRun: (run: Run) => void;
+  onRecheck: (run: Run) => void;
   onOpenPeople: () => void;
   onOpenSettings: () => void;
   balances: Partial<Record<TokenSymbol, bigint>>;
 }) {
   const employees = useEmployees();
-  const me = useSession();
+  const nameOf = useNameOf();
   const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs) });
+  const openRun = runs.data?.find((r) => r.status === "pending" || r.status === "approved" || r.status === "submitted");
+  const latest = runs.data?.[0];
+  const rejected = latest?.status === "rejected" ? latest : undefined;
+  const canPrepare = can(session.role, "prepare");
+  const needsApproval = session.org.approvalsRequired > 0 || session.address.toLowerCase() !== session.org.ownerAddress.toLowerCase();
   const list = employees.data ?? [];
   const last = runs.data?.find((r) => r.status === "confirmed");
   const totals = sumByToken(list);
@@ -127,6 +189,22 @@ function PayHome({
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      {rejected && !openRun && (
+        <div role="status" className="rounded-2xl border border-bad-line bg-bad-soft p-4 text-sm text-bad-text">
+          <span className="font-semibold">{nameOf(rejected.rejection?.by)} sent the last payroll back.</span>{" "}
+          {rejected.rejection?.reason ? `“${rejected.rejection.reason}”` : ""} Fix it in People, then run payroll again.
+        </div>
+      )}
+      {openRun ? (
+        <OpenRunCard
+          me={session}
+          run={openRun}
+          busy={preparing}
+          onOpen={(mode) => onOpenRun(openRun, mode)}
+          onCancel={() => onCancelRun(openRun)}
+          onRecheck={() => onRecheck(openRun)}
+        />
+      ) : (
       <Card className="flex flex-col gap-6 rounded-[20px] p-6 sm:p-9">
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium text-ink-2">Payroll</span>
@@ -136,13 +214,20 @@ function PayHome({
           <p className="tabular text-lg text-ink-2">{totalsLabel(sumByToken(list))}</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
-            {preparing ? <Spinner /> : null}
-            {preparing ? "Pulling from People…" : "Run payroll"}
-          </Button>
+          {canPrepare ? (
+            <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
+              {preparing ? <Spinner /> : null}
+              {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
+            </Button>
+          ) : (
+            <span className="rounded-xl bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
+          )}
           <span className="max-w-[42ch] text-sm leading-relaxed text-ink-2">
             {list.length === 0 ? "Add your team first. " : "Names, wallets and amounts come straight from "}
             <button type="button" onClick={onOpenPeople} className="text-brand underline">People</button>.
+            {canPrepare && session.org.approvalsRequired > 0 && (
+              <> It goes to {session.org.approvalsRequired} approver{session.org.approvalsRequired === 1 ? "" : "s"} before the treasury can send it.</>
+            )}
           </span>
         </div>
         {short.length > 0 && (
@@ -151,7 +236,8 @@ function PayHome({
           </p>
         )}
       </Card>
-      {me.data && <Schedule payDay={me.data.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />}
+      )}
+      {<Schedule payDay={session.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />}
       {used.length > 0 && (
         <section aria-labelledby="coverage-h" className="flex flex-col gap-3">
           <h2 id="coverage-h" className="text-base font-semibold">Treasury</h2>
@@ -237,24 +323,60 @@ function CalendarIcon() {
 }
 
 function Review({
+  me,
+  mode,
+  detail,
   run,
   items,
   review,
   balances,
+  treasury,
   onBack,
   onSend,
+  onRequest,
+  onApprove,
+  onReject,
+  onCancel,
 }: {
+  me: Me;
+  mode: ReviewMode;
+  detail?: RunDetail;
   run: Run;
   items: RunItem[];
   review: RunReview;
   balances: Partial<Record<TokenSymbol, bigint>>;
+  treasury: `0x${string}` | undefined;
   onBack: () => void;
   onSend: (verifiedWallets: string[]) => void;
+  onRequest: (verifiedWallets: string[]) => Promise<void>;
+  onApprove: () => Promise<void>;
+  onReject: (reason: string) => Promise<void>;
+  onCancel: () => Promise<void>;
 }) {
-  const { chainId, address } = useAccount();
+  const { chainId } = useAccount();
   const toast = useToast();
+  const nameOf = useNameOf();
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [allChecked, setAllChecked] = useState(false);
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const preparing = mode === "prepare";
+  const isOwner = me.address.toLowerCase() === me.org.ownerAddress.toLowerCase();
+  // The owner sends directly only when no approvals are required; everyone else asks first.
+  const directSend = preparing && isOwner && me.org.approvalsRequired === 0;
+  const approvals = detail?.approvals ?? [];
+  const actions = runActions(me, run, approvals);
+  const preparerConfirmed = new Set((detail?.verifiedWallets ?? []).map((w) => w.toLowerCase()));
+  const step = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
   const cfg = getChainConfig(run.chainId);
   const totals = sumByToken(items);
   const used = TOKEN_SYMBOLS.filter((s) => totals[s] > 0n);
@@ -265,7 +387,7 @@ function Review({
   const lookalikes = new Map(review.lookalikes.map((l) => [l.wallet.toLowerCase(), l]));
   const toConfirm = items.filter((i) => changedWallets.has(i.wallet.toLowerCase()) || newWallets.has(i.wallet.toLowerCase()));
   const fee = useNetworkFee(run.chainId, items, newWallets, used.length);
-  const eth = useBalance({ address, chainId: run.chainId });
+  const eth = useBalance({ address: treasury, chainId: run.chainId });
   const ethShort = fee !== undefined && eth.data !== undefined && eth.data.value < fee;
 
   const checks = [
@@ -279,11 +401,14 @@ function Review({
       text: ethShort ? `Add ETH on ${cfg?.chain.name} to cover the network fee` : `Enough ETH for the network fee`,
     },
     { ok: items.length <= MAX_PAYMENTS, text: `${items.length} of ${MAX_PAYMENTS} payments allowed in one transaction` },
-    { ok: !wrongChain, text: wrongChain ? `Switch your wallet to ${cfg?.chain.name}` : `Paying on ${cfg?.chain.name}` },
+    // Only the wallet that signs a transaction needs to be on the right network.
+    ...(directSend || mode === "send" ? [{ ok: !wrongChain, text: wrongChain ? `Switch your wallet to ${cfg?.chain.name}` : `Paying on ${cfg?.chain.name}` }] : []),
   ];
-  const walletsOk = review.firstRun ? allChecked : toConfirm.every((i) => confirmed.has(i.wallet.toLowerCase()));
+  // Preparers confirm each new or changed wallet; approvers and the sender see those confirmations.
+  const walletsOk = !preparing || (review.firstRun ? allChecked : toConfirm.every((i) => confirmed.has(i.wallet.toLowerCase())));
   const pending = review.firstRun ? (allChecked ? 0 : items.length) : toConfirm.filter((i) => !confirmed.has(i.wallet.toLowerCase())).length;
-  const canSend = checks.every((c) => c.ok) && walletsOk;
+  // Approvers judge the run itself; balances can be topped up before the treasury sends.
+  const canSend = (mode === "approve" ? ack : checks.every((c) => c.ok)) && walletsOk && !busy;
   const verified = review.firstRun ? items.map((i) => i.wallet) : toConfirm.map((i) => i.wallet);
   const toggle = (wallet: string) =>
     setConfirmed((prev) => {
@@ -301,9 +426,16 @@ function Review({
         Back
       </button>
       <div>
-        <h1 className="text-[28px] font-semibold tracking-tight sm:text-[32px]">Review payroll</h1>
-        <p className="mt-1 text-base text-ink-2">Pulled {items.length} {items.length === 1 ? "person" : "people"} from People just now.</p>
+        <h1 className="text-[28px] font-semibold tracking-tight sm:text-[32px]">
+          {mode === "approve" ? "Approve payroll" : mode === "send" ? "Send approved payroll" : mode === "view" ? "Payroll details" : "Review payroll"}
+        </h1>
+        <p className="mt-1 text-base text-ink-2">
+          {preparing
+            ? `Pulled ${items.length} ${items.length === 1 ? "person" : "people"} from People just now.`
+            : `${items.length} ${items.length === 1 ? "person" : "people"}, prepared by ${nameOf(run.createdBy)}. This list can't change: any edit in People needs a new payroll.`}
+        </p>
       </div>
+      {!preparing && detail && <ApprovalPanel run={run} approvals={approvals} required={detail.approvalsRequired} />}
 
       {review.lookalikes.length > 0 && (
         <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-bad-line bg-bad-soft p-5 text-sm text-bad-text">
@@ -352,7 +484,36 @@ function Review({
         ))}
       </Card>
 
-      {!review.firstRun && toConfirm.length > 0 && (
+      {!preparing && toConfirm.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-5 pt-4">
+            <h2 className="text-base font-semibold">New or changed wallets</h2>
+            <p className="mt-1 text-sm text-ink-2">The preparer confirmed these with each person before asking for approval.</p>
+          </div>
+          <ul className="mt-3 divide-y divide-line-soft border-t border-line">
+            {toConfirm.map((i) => {
+              const k = i.wallet.toLowerCase();
+              const like = lookalikes.get(k);
+              return (
+                <li key={i.wallet} className={`flex flex-col gap-2 px-5 py-3.5 ${like ? "bg-bad-soft/40" : ""}`}>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-semibold">{i.name}</span>
+                    {like ? <Badge tone="bad">Looks like {like.resemblesName}&apos;s wallet</Badge> : changedWallets.has(k) ? <Badge tone="bad">Wallet changed</Badge> : <Badge tone="warn">First payment</Badge>}
+                    {preparerConfirmed.has(k) ? <Badge tone="good">Confirmed by preparer</Badge> : <Badge tone="neutral">Not confirmed</Badge>}
+                  </div>
+                  <span className="flex flex-wrap gap-x-2 font-mono text-[14px] tracking-wide">
+                    {chunkAddress(i.wallet).map((c, n) => (
+                      <span key={n} className={n === 0 || n === 9 ? "font-semibold" : "text-ink-2"}>{c}</span>
+                    ))}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
+      {preparing && !review.firstRun && toConfirm.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-5 pt-4">
             <h2 className="text-base font-semibold">Confirm {toConfirm.length === 1 ? "this wallet" : `these ${toConfirm.length} wallets`} with each person</h2>
@@ -422,7 +583,7 @@ function Review({
         </ul>
       </Card>
 
-      {review.firstRun && (
+      {preparing && review.firstRun && (
         <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-warn-line bg-warn-soft p-4 text-sm text-warn">
           <input type="checkbox" checked={allChecked} onChange={(e) => setAllChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
           <span>
@@ -432,16 +593,71 @@ function Review({
         </label>
       )}
 
+      {mode === "approve" && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-sm">
+          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
+          <span>
+            <span className="font-semibold">I&apos;ve checked who gets paid, the amounts and every new or changed wallet.</span> Your wallet will sign an
+            approval of exactly this list. It doesn&apos;t move funds or cost gas.
+          </span>
+        </label>
+      )}
+
       <div className="flex flex-col gap-2.5">
-        <Button size="lg" className="min-h-[60px] text-lg" onClick={() => onSend(verified)} disabled={!canSend}>
-          Send to {items.length} {items.length === 1 ? "person" : "people"}
-        </Button>
+        {directSend || mode === "send" ? (
+          <Button size="lg" className="min-h-[60px] text-lg" onClick={() => onSend(verified)} disabled={!canSend}>
+            Send to {items.length} {items.length === 1 ? "person" : "people"}
+          </Button>
+        ) : preparing ? (
+          <Button size="lg" className="min-h-[60px] text-lg" onClick={() => step(() => onRequest(verified))} disabled={!walletsOk || busy}>
+            {busy ? <Spinner /> : null}
+            {me.org.approvalsRequired > 0 ? "Submit for approval" : "Send to the treasury for signing"}
+          </Button>
+        ) : mode === "approve" ? (
+          rejecting ? (
+            <Card className="flex flex-col gap-3 p-4">
+              <label className="flex flex-col gap-1.5 text-sm font-medium">
+                Why are you sending it back?
+                <textarea
+                  className="min-h-[80px] rounded-[10px] border border-line-strong bg-surface px-3 py-2 text-[15px] text-ink focus:border-brand focus:outline-none"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  maxLength={300}
+                  placeholder="e.g. Maya's new wallet wasn't confirmed with her."
+                />
+              </label>
+              <div className="flex flex-wrap gap-2.5">
+                <Button variant="danger" disabled={!reason.trim() || busy} onClick={() => step(() => onReject(reason))}>Reject payroll</Button>
+                <Button variant="secondary" onClick={() => setRejecting(false)}>Keep reviewing</Button>
+              </div>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2.5 sm:flex-row">
+              <Button size="lg" className="min-h-[60px] flex-1 text-lg" onClick={() => step(onApprove)} disabled={!canSend || !actions.canApprove}>
+                {busy ? <Spinner /> : null}
+                Approve with my wallet
+              </Button>
+              <Button size="lg" variant="danger" className="min-h-[60px]" onClick={() => setRejecting(true)} disabled={busy}>Reject</Button>
+            </div>
+          )
+        ) : null}
+        {mode === "view" && actions.canCancel && (
+          <Button variant="danger" onClick={() => step(onCancel)} disabled={busy}>Cancel this payroll</Button>
+        )}
         <p className="text-center text-[13px] text-ink-2">
-          {!walletsOk
+          {preparing && !walletsOk
             ? review.firstRun
               ? "Confirm the wallet check above to continue."
               : `Confirm ${pending} more ${pending === 1 ? "wallet" : "wallets"} above to continue.`
-            : "Everyone is paid in one transaction from your wallet. Payments can't be reversed."}
+            : directSend || mode === "send"
+              ? "Everyone is paid in one transaction from your wallet. Payments can't be reversed."
+              : preparing
+                ? me.org.approvalsRequired > 0
+                  ? `${me.org.approvalsRequired} approver${me.org.approvalsRequired === 1 ? "" : "s"} must sign off before the treasury wallet can send it.`
+                  : "The treasury wallet reviews and sends it."
+                : mode === "approve"
+                  ? "Once approvals are complete, only the treasury wallet can send it."
+                  : ""}
         </p>
       </div>
     </div>

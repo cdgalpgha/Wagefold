@@ -4,17 +4,21 @@ import { useCallback, useState } from "react";
 import { encodeFunctionData, erc20Abi, type Address, type Hex, type WalletClient } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { payrollAbi } from "@/lib/abi";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getChainConfig, type ChainConfig } from "@/lib/chains";
 import { friendlyError } from "@/lib/errors";
 import { buildPayments, requiredAllowances, type RunItem } from "@/lib/payments";
 import type { RunReview } from "@/lib/changes";
-import type { NewRun, Run } from "@/lib/types";
+import type { NewRun, Run, RunDetail } from "@/lib/types";
+
+/** What the review screen is for: preparing a new run, approving one, sending an approved one, or just looking. */
+export type ReviewMode = "prepare" | "approve" | "send" | "view";
 
 export type Phase =
   | { kind: "idle" }
   | { kind: "preparing" }
-  | { kind: "review"; run: Run; items: RunItem[]; review: RunReview }
+  | { kind: "review"; run: Run; items: RunItem[]; review: RunReview; mode: ReviewMode; detail?: RunDetail }
+  | { kind: "loading" }
   | { kind: "approving"; run: Run; items: RunItem[]; symbol: string; step: number; steps: number }
   | { kind: "confirm"; run: Run; items: RunItem[]; batched: boolean }
   | { kind: "sending"; run: Run; items: RunItem[]; txHash?: Hex }
@@ -43,11 +47,65 @@ export function usePayroll() {
     setPhase({ kind: "preparing" });
     try {
       const { run, items, review } = await api<NewRun>("/api/runs", { body: { chainId } });
-      setPhase({ kind: "review", run, items, review });
+      setPhase({ kind: "review", run, items, review, mode: "prepare" });
     } catch (err) {
+      // Someone else's payroll is already in flight: go back and show it.
+      if (err instanceof ApiError && err.status === 409) return setPhase({ kind: "idle" });
       setPhase({ kind: "error", message: friendlyError(err) });
     }
   }, [chainId]);
+
+  /** Opens an existing run (waiting for approval, approved, or sent) in the given mode. */
+  const open = useCallback(async (runId: string, mode: ReviewMode) => {
+    setPhase({ kind: "loading" });
+    try {
+      const detail = await api<RunDetail>(`/api/runs/${runId}`);
+      setPhase({ kind: "review", run: detail.run, items: detail.items, review: detail.review, mode, detail });
+    } catch (err) {
+      setPhase({ kind: "error", message: friendlyError(err) });
+    }
+  }, []);
+
+  /** The preparer sends the reviewed draft for approval (or to the treasury when none is needed). */
+  const request = useCallback(async (run: Run, verifiedWallets: string[]) => {
+    await api(`/api/runs/${run.id}/request`, { body: { verifiedWallets } });
+    setPhase({ kind: "idle" });
+  }, []);
+
+  /** An approver signs the server's approval message for this exact run with their own wallet. */
+  const approve = useCallback(
+    async (run: Run) => {
+      if (!walletClient || !address) throw new Error("Reconnect your wallet and try again.");
+      const { message } = await api<{ message: string }>(`/api/runs/${run.id}/approve`);
+      const signature = await walletClient.signMessage({ account: address, message });
+      await api(`/api/runs/${run.id}/approve`, { body: { signature } });
+      setPhase({ kind: "idle" });
+    },
+    [address, walletClient],
+  );
+
+  const reject = useCallback(async (run: Run, reason: string) => {
+    await api(`/api/runs/${run.id}/reject`, { body: { reason } });
+    setPhase({ kind: "idle" });
+  }, []);
+
+  const cancel = useCallback(async (run: Run) => {
+    await api(`/api/runs/${run.id}/cancel`, { body: {} });
+    setPhase({ kind: "idle" });
+  }, []);
+
+  /** Re-checks a run that was sent but not yet verified (for example after closing the tab mid-way). */
+  const recheck = useCallback(async (run: Run, items: RunItem[]) => {
+    setPhase({ kind: "verifying", run, items, txHash: run.txHash! });
+    try {
+      const res = await api<{ run: Run; pending?: boolean }>(`/api/runs/${run.id}/confirm`, { body: {} });
+      if (res.run.status === "confirmed") return setPhase({ kind: "done", run: res.run, items });
+      if (res.run.status === "failed") return setPhase({ kind: "failed", run: res.run, items });
+      setPhase({ kind: "error", message: "The transaction isn't confirmed yet. Try again in a minute." });
+    } catch (err) {
+      setPhase({ kind: "error", message: friendlyError(err) });
+    }
+  }, []);
 
   const send = useCallback(
     async (run: Run, items: RunItem[], verifiedWallets: string[] = []) => {
@@ -134,7 +192,7 @@ export function usePayroll() {
     [address, chainId, publicClient, walletClient],
   );
 
-  return { phase, prepare, send, reset };
+  return { phase, prepare, open, request, approve, reject, cancel, recheck, send, reset };
 }
 
 async function supportsAtomicBatch(

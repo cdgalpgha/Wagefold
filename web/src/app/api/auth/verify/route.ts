@@ -3,7 +3,7 @@ import { getAddress, isHex } from "viem";
 import { parseSiweMessage } from "viem/siwe";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, readJson } from "@/lib/server/http";
-import { logActivity, upsertOrganization } from "@/lib/server/repo";
+import { getOrganization, logActivity, membershipsFor, upsertOrganization } from "@/lib/server/repo";
 import { createSessionCookie, NONCE_COOKIE } from "@/lib/server/session";
 
 export async function POST(req: Request) {
@@ -36,11 +36,26 @@ export async function POST(req: Request) {
   if (!valid) return fail("We couldn't verify that signature.", 401);
 
   const address = getAddress(parsed.address);
-  const org = await upsertOrganization(address);
+  const org = await chooseOrganization(address);
+  if (!org) return fail("Couldn't open your company. Try again.", 500);
   await createSessionCookie({ address, orgId: org.id, chainId: parsed.chainId });
   jar.delete(NONCE_COOKIE);
   await logActivity(org.id, address, "signed_in", { chainId: parsed.chainId });
   return json({ address, chainId: parsed.chainId, org });
+}
+
+/**
+ * Which company to open. A wallet that was added to someone else's team lands there, unless its own
+ * company already has people in it. A wallet on no team gets its own company, as its owner.
+ * The header switcher moves between companies afterwards.
+ */
+async function chooseOrganization(address: string) {
+  const memberships = await membershipsFor(address);
+  if (!memberships.length) return upsertOrganization(address);
+  const owned = memberships.find((m) => m.role === "owner");
+  const invited = memberships.find((m) => m.role !== "owner");
+  const pick = owned && (owned.employees > 0 || !invited) ? owned : invited ?? memberships[0];
+  return getOrganization(pick.orgId);
 }
 
 /**

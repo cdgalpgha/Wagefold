@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { fail, json, requireSession } from "@/lib/server/http";
-import { getRun } from "@/lib/server/repo";
+import { fail, json, requireMember } from "@/lib/server/http";
+import { runDetail } from "@/lib/server/runs";
 
 export const dynamic = "force-dynamic";
+const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const params = await ctx.params;
-  const session = await requireSession();
+  const { id } = await ctx.params;
+  const session = await requireMember();
   if (session instanceof NextResponse) return session;
-  const found = await getRun(session.orgId, params.id).catch(() => null);
-  return found ? json(found) : fail("Payroll run not found.", 404);
+  const detail = UUID_RE.test(id) ? await runDetail(session.orgId, id) : null;
+  return detail ? json(detail) : fail("Payroll run not found.", 404);
 }

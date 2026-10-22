@@ -29,6 +29,14 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
     <td width="50%"><img src="docs/screenshots/10-payslip.png" alt="Payslip with year-to-date total and transaction"><br><sub><b>Payslips</b>: fiat value, year-to-date total and the transaction as proof of payment</sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/18-approval-waiting.png" alt="Payroll waiting for approval"><br><sub><b>Approvals</b>: a prepared payroll waits for the required approvers before the treasury can send it</sub></td>
+    <td width="50%"><img src="docs/screenshots/19-approval-signature.png" alt="Approver signing the approval in their wallet"><br><sub><b>Signed approval</b>: each approver signs this exact list of payments with their own wallet</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/20-team-approvals.png" alt="Team and approval rule in Settings"><br><sub><b>Team</b>: owner, admins, preparers and viewers, each with their own wallet, and the approval rule</sub></td>
+    <td width="50%"><img src="docs/screenshots/21-history-approvals.png" alt="History showing who prepared and approved a run"><br><sub><b>Audit trail</b>: who prepared, who approved (with signature) and who sent every run</sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/13-invoices.png" alt="Invoices issued automatically for every payment"><br><sub><b>Invoices</b>: issued automatically per payment, numbered in order, one PDF per invoice or per month</sub></td>
     <td width="50%"><img src="docs/screenshots/17-invoice-pdf.png" alt="Invoice PDF"><br><sub><b>Invoice PDF</b>: supplier, bill-to, amount, USD value and the transaction as proof of payment</sub></td>
   </tr>
@@ -45,13 +53,14 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
 ## How it works
 
 1. **Land and connect.** The landing page explains the product; "Connect wallet" opens the wallet picker. Supported: MetaMask or any browser wallet, Coinbase Wallet, Trust Wallet and other phone wallets (WalletConnect), or Safe.
-2. **Sign in** by signing a message ([Sign-In with Ethereum](https://eips.ethereum.org/EIPS/eip-4361)). No gas, no funds move. The wallet that signs in owns the company's data.
+2. **Sign in** by signing a message ([Sign-In with Ethereum](https://eips.ethereum.org/EIPS/eip-4361)). No gas, no funds move. A wallet signing in for the first time becomes the owner of a new company: its treasury. Teammates sign in with their own wallets and land in the company they were added to (a switcher appears if a wallet belongs to several).
 3. **People** is the employee database. Add people one by one or import a CSV.
 4. **Run payroll** snapshots everyone from People into a run and shows what changed since the last paid run (new people, removed people, pay changes, wallet changes). Each changed or never-paid wallet is shown in full and must be confirmed with its owner before sending. A wallet that shares its first and last characters with a wallet you've paid before is flagged as a likely [address-poisoning](https://www.chainalysis.com/blog/address-poisoning-scam/) lookalike. It checks the treasury balance, the ETH for gas, and estimates the network fee, then sends every payment in one transaction through `WagefoldPayroll`.
 5. **The server verifies** the transaction on-chain: it only marks a run paid if the contract paid exactly the snapshotted wallets and amounts, from this company's wallet. It records when the block settled, the network fee, and the USD rate used.
 6. **Records** come from verified runs only: a payslip per payment (with year-to-date totals), a per-payment CSV, a journal in QuickBooks' import layout, and yearly totals per person. History also has an activity log of every change, which can't be edited.
-7. **Invoices.** When a run is verified, Wagefold issues an invoice for every payment: numbered in order (prefix set in Settings), billed to your company's legal name, address and tax ID, from each person's name, address and tax ID (optional fields in People). Each invoice is a frozen snapshot: later edits never change it, and the database rejects updates. Download any invoice, or a whole month, as a branded A4 PDF generated in the browser.
-8. **Payday.** Set a monthly payday in Settings. Pay shows when payroll is due, warns if a payday passed unpaid, and offers a calendar reminder. Wagefold never sends on its own.
+7. **Team and approvals.** The owner (the treasury wallet) adds teammates by wallet address as **Admin** (approves payroll), **Preparer** (keeps People up to date and prepares payroll) or **Viewer** (read-only, for an accountant), and sets how many approvals a payroll needs (0–5). With approvals on, a prepared payroll goes to the approvers first: each one reviews the same screen (changes, lookalike warnings, totals, who gets paid) and approves by **signing a message with their own wallet** that names the run, the totals, the treasury and a hash of every payment. Whoever prepared a payroll can never approve it. Only once enough approvals are in can the treasury wallet send it, and only the treasury wallet can send. Approvers can reject with a reason; the preparer or owner can cancel.
+8. **Invoices.** When a run is verified, Wagefold issues an invoice for every payment: numbered in order (prefix set in Settings), billed to your company's legal name, address and tax ID, from each person's name, address and tax ID (optional fields in People). Each invoice is a frozen snapshot: later edits never change it, and the database rejects updates. Download any invoice, or a whole month, as a branded A4 PDF generated in the browser.
+9. **Payday.** Set a monthly payday in Settings. Pay shows when payroll is due, warns if a payday passed unpaid, and offers a calendar reminder. Wagefold never sends on its own.
 
 Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/eip-5792), e.g. Coinbase Smart Wallet) approve and pay with one confirmation. Other wallets first approve each token for exactly this run's total, then confirm the payment.
 
@@ -78,7 +87,7 @@ It has not had an external audit. Get one before handling real payroll.
 
 ## Demo build (no server, no wallet needed)
 
-`cd web && npm run build:demo` produces one self-contained HTML file in `web/demo-dist/`. It runs the real UI with an in-browser backend (`src/demo/mock-api.ts`), a simulated chain that executes the same token and payroll rules as the contract (`src/demo/sim-chain.ts`), and a built-in test wallet with approval prompts. Nothing touches a real network. Each viewer's data stays in their own browser; "Reset demo" starts over.
+`cd web && npm run build:demo` produces one self-contained HTML file in `web/demo-dist/`. The test wallet has two accounts, the treasury and an approver (Dana, CFO), and the example company needs one approval, so you can prepare a payroll as the treasury, switch accounts in the demo banner to approve it as Dana, and switch back to send it. It runs the real UI with an in-browser backend (`src/demo/mock-api.ts`), a simulated chain that executes the same token and payroll rules as the contract (`src/demo/sim-chain.ts`), and a built-in test wallet with approval prompts. Nothing touches a real network. Each viewer's data stays in their own browser; "Reset demo" starts over.
 
 ## Security
 
@@ -87,6 +96,9 @@ It has not had an external audit. Get one before handling real payroll.
 - **Access control:** every query is scoped to the signed-in company; unknown fields in requests (such as another company's id) are ignored.
 - **Payments** are verified on-chain before a run is marked paid, from the right wallet, with exactly the snapshotted recipients and amounts.
 - **Wallet fraud:** lookalike addresses are flagged in People and in the review; every new or changed wallet must be confirmed individually, and the confirmation is logged with the run.
+- **Approvals** are enforced by the server, not just the UI. The send step is refused unless the run has enough approvals under the company's current rule, counted in the same database statement that records the transaction. Each approval is a wallet signature over a message the server rebuilds from its own snapshot (so a stolen session can't approve, and a signature can't be replayed on another run or with different amounts), verified with ERC-1271 support so Safe and other smart-wallet approvers work. Approvals only count while the approver is still an owner or admin: remove a compromised approver and their approvals stop counting at once. The preparer can't approve their own run, even after being promoted. Approvals are append-only in the database.
+- **Roles** are read from the database on every request, never from the session cookie, so removing someone or changing their role takes effect on their next request. Only the owner can change the team or the approval rule; there is exactly one owner and it can't be removed or reassigned through the API. Company and people names are single-line so they can't fake lines inside a message an approver signs.
+- **What approvals can't do:** they control what Wagefold will send and record. The treasury wallet's key can still move its own funds outside Wagefold. For approvals enforced on-chain as well, keep the treasury in a Safe with its own signing threshold (a Safe-native flow is next).
 - **Activity log** is append-only in the app and in the database (a trigger rejects updates and deletes), scoped to the company, and records the signer's address for every change.
 - **Exports** neutralise spreadsheet formulas in user-typed fields (CSV injection), and payslips escape every value and contain no scripts.
 - **Invoices** are scoped to the company, issued once per payment (unique constraints stop duplicates under concurrent requests) and immutable in the database. PDFs are built in the browser from data the server already returned; nothing is uploaded.
@@ -149,8 +161,8 @@ Exports and payslips show a USD value for every payment. By default that is par 
 
 The [research](docs/research/payroll-buyer-needs.md) ranks these next:
 
-- A Safe-native multi-signer flow: propose the run to the treasury Safe, show signers the decoded payload and the changes, verify the executed result
-- Team roles with maker-checker approval: whoever edits wallets or amounts can't approve the run; a cooling-off period on wallet changes
+- A Safe-native multi-signer flow: propose the approved run to the treasury Safe, so the approval threshold is also enforced on-chain
+- A cooling-off period on wallet changes, and approval expiry
 - A recipient view: payment status and payslips without asking the employer
 - Xero journal layout and email reminders before payday
 - Emailing invoices and payslips to each person

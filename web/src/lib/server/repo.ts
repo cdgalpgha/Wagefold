@@ -3,22 +3,14 @@ import { formatEther } from "viem";
 import type { TokenSymbol } from "../chains";
 import { buildInvoice, type Invoice, type InvoiceData } from "../invoices";
 import type { Known } from "../lookalike";
+import type { AssignableRole, Role } from "../roles";
+import type { Approval, Member, Membership, Org, Run as PublicRun, RunStatus as PublicRunStatus } from "../types";
 import { canonical } from "../money";
 import { onchainRef, type RunItem } from "../payments";
 import type { EmployeeInput } from "../validation";
 import { getDb } from "./db";
 
-export type Organization = {
-  id: string;
-  ownerAddress: string;
-  name: string;
-  payDay: number | null;
-  legalName: string | null;
-  address: string | null;
-  taxId: string | null;
-  invoicePrefix: string;
-  invoiceNote: string | null;
-};
+export type Organization = Org;
 export type Employee = {
   id: string;
   name: string;
@@ -30,23 +22,8 @@ export type Employee = {
   address: string;
   taxId: string;
 };
-export type RunStatus = "draft" | "submitted" | "confirmed" | "failed";
-export type Run = {
-  id: string;
-  chainId: number;
-  onchainRef: string;
-  status: RunStatus;
-  failureReason: string | null;
-  txHash: string | null;
-  recipientCount: number;
-  totals: Record<string, string>;
-  createdAt: string;
-  confirmedAt: string | null;
-  paidAt: string | null;
-  blockNumber: string | null;
-  networkFee: string | null;
-  usdRates: Partial<Record<TokenSymbol, { rate: string; source: string }>> | null;
-};
+export type RunStatus = PublicRunStatus;
+export type Run = PublicRun;
 export type RunRecord = {
   paidAt: Date;
   blockNumber: bigint;
@@ -71,7 +48,14 @@ type RunRow = {
   block_number: string | null;
   network_fee_wei: string | null;
   usd_rates: RunRecord["usdRates"] | string | null;
+  created_by: string | null;
+  requested_at: Date | string | null;
+  submitted_by: string | null;
+  rejection: Run["rejection"] | string | null;
+  approval_count: number | string;
 };
+
+const json = <T>(v: T | string | null): T | null => (typeof v === "string" ? (JSON.parse(v) as T) : v);
 
 const iso = (d: Date | string | null) => (d === null ? null : new Date(d).toISOString());
 
@@ -79,10 +63,10 @@ const toEmployee = ({ tax_id, ...r }: EmployeeRow): Employee => ({ ...r, taxId: 
 const toRun = (r: RunRow): Run => ({
   id: r.id,
   chainId: r.chain_id,
-  onchainRef: r.onchain_ref,
+  onchainRef: r.onchain_ref as `0x${string}`,
   status: r.status,
   failureReason: r.failure_reason,
-  txHash: r.tx_hash,
+  txHash: r.tx_hash as `0x${string}` | null,
   recipientCount: r.recipient_count,
   totals: typeof r.totals === "string" ? JSON.parse(r.totals) : r.totals,
   createdAt: iso(r.created_at)!,
@@ -90,7 +74,12 @@ const toRun = (r: RunRow): Run => ({
   paidAt: iso(r.paid_at),
   blockNumber: r.block_number,
   networkFee: r.network_fee_wei === null ? null : formatEther(BigInt(r.network_fee_wei)),
-  usdRates: typeof r.usd_rates === "string" ? JSON.parse(r.usd_rates) : r.usd_rates,
+  usdRates: json(r.usd_rates),
+  createdBy: r.created_by,
+  requestedAt: iso(r.requested_at),
+  submittedBy: r.submitted_by,
+  approvalCount: Number(r.approval_count),
+  rejection: json(r.rejection),
 });
 
 export class DuplicateWalletError extends Error {}
@@ -111,8 +100,9 @@ type OrgRow = {
   tax_id: string | null;
   invoice_prefix: string;
   invoice_note: string | null;
+  approvals_required: number;
 };
-const ORG_COLUMNS = `id, owner_address, name, pay_day, legal_name, address, tax_id, invoice_prefix, invoice_note`;
+const ORG_COLUMNS = `id, owner_address, name, pay_day, legal_name, address, tax_id, invoice_prefix, invoice_note, approvals_required`;
 const toOrg = (r: OrgRow): Organization => ({
   id: r.id,
   ownerAddress: r.owner_address,
@@ -123,8 +113,10 @@ const toOrg = (r: OrgRow): Organization => ({
   taxId: r.tax_id,
   invoicePrefix: r.invoice_prefix,
   invoiceNote: r.invoice_note,
+  approvalsRequired: r.approvals_required,
 });
 
+/** The company this wallet owns, created on first sign-in, with the wallet as its owner member. */
 export async function upsertOrganization(ownerAddress: string): Promise<Organization> {
   const db = await getDb();
   const { rows } = await db.query<OrgRow>(
@@ -133,7 +125,88 @@ export async function upsertOrganization(ownerAddress: string): Promise<Organiza
      returning ${ORG_COLUMNS}`,
     [ownerAddress],
   );
+  await db.query(`insert into members (org_id, address, role) values ($1, $2, 'owner') on conflict do nothing`, [rows[0].id, ownerAddress]);
   return toOrg(rows[0]);
+}
+
+// Team -------------------------------------------------------------------------------------------
+
+type MemberRow = { address: string; name: string; role: Role; added_by: string | null; created_at: Date | string };
+const toMember = (r: MemberRow): Member => ({ address: r.address, name: r.name, role: r.role, addedBy: r.added_by, createdAt: iso(r.created_at)! });
+
+/** Every company this wallet belongs to, with its role there. */
+export async function membershipsFor(address: string): Promise<(Membership & { employees: number })[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ org_id: string; name: string; role: Role; employees: number | string }>(
+    `select m.org_id::text as org_id, o.name, m.role,
+       (select count(*) from employees e where e.org_id = m.org_id) as employees
+     from members m join organizations o on o.id = m.org_id
+     where lower(m.address) = lower($1) order by m.created_at`,
+    [address],
+  );
+  return rows.map((r) => ({ orgId: r.org_id, name: r.name, role: r.role, employees: Number(r.employees) }));
+}
+
+/** This wallet's role in this company, or null if it isn't (or is no longer) a member. */
+export async function roleOf(orgId: string, address: string): Promise<Role | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ role: Role }>(`select role from members where org_id = $1 and lower(address) = lower($2)`, [orgId, address]);
+  return rows[0]?.role ?? null;
+}
+
+export async function listMembers(orgId: string): Promise<Member[]> {
+  const db = await getDb();
+  const { rows } = await db.query<MemberRow>(
+    `select address, name, role, added_by, created_at from members where org_id = $1
+     order by case role when 'owner' then 0 when 'admin' then 1 when 'preparer' then 2 else 3 end, created_at`,
+    [orgId],
+  );
+  return rows.map(toMember);
+}
+
+export class MemberExistsError extends Error {}
+
+export async function addMember(orgId: string, input: { address: string; name: string; role: AssignableRole }, addedBy: string): Promise<Member> {
+  const db = await getDb();
+  try {
+    const { rows } = await db.query<MemberRow>(
+      `insert into members (org_id, address, name, role, added_by) values ($1, $2, $3, $4, $5)
+       returning address, name, role, added_by, created_at`,
+      [orgId, input.address, input.name, input.role, addedBy],
+    );
+    return toMember(rows[0]);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new MemberExistsError("That wallet is already on the team.");
+    throw err;
+  }
+}
+
+/** Changes a teammate's name or role. The owner row can't be changed or removed here. */
+export async function updateMember(orgId: string, address: string, patch: { name?: string; role?: AssignableRole }): Promise<Member | null> {
+  const db = await getDb();
+  const { rows } = await db.query<MemberRow>(
+    `update members set name = coalesce($3, name), role = coalesce($4, role)
+     where org_id = $1 and lower(address) = lower($2) and role <> 'owner'
+     returning address, name, role, added_by, created_at`,
+    [orgId, address, patch.name ?? null, patch.role ?? null],
+  );
+  return rows[0] ? toMember(rows[0]) : null;
+}
+
+export async function removeMember(orgId: string, address: string): Promise<Member | null> {
+  const db = await getDb();
+  const { rows } = await db.query<MemberRow>(
+    `delete from members where org_id = $1 and lower(address) = lower($2) and role <> 'owner'
+     returning address, name, role, added_by, created_at`,
+    [orgId, address],
+  );
+  return rows[0] ? toMember(rows[0]) : null;
+}
+
+export async function setApprovalsRequired(orgId: string, n: number): Promise<Organization | null> {
+  const db = await getDb();
+  const { rows } = await db.query<OrgRow>(`update organizations set approvals_required = $2 where id = $1 returning ${ORG_COLUMNS}`, [orgId, n]);
+  return rows[0] ? toOrg(rows[0]) : null;
 }
 
 export async function getOrganization(orgId: string): Promise<Organization | null> {
@@ -243,8 +316,18 @@ export async function deleteEmployee(orgId: string, id: string): Promise<Employe
 
 // Payroll runs -----------------------------------------------------------------------------------
 
+/**
+ * Approvals that still count: from someone who is on the team now as owner or admin. If an approver
+ * is removed or demoted (for example because their wallet was compromised), their approval stops
+ * counting immediately and the run needs a new one.
+ */
+const VALID_APPROVALS = `(select count(*) from run_approvals a join members m on m.org_id = payroll_runs.org_id and lower(m.address) = lower(a.approver)
+     and m.role in ('owner', 'admin') where a.run_id = payroll_runs.id)`;
+
 const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, recipient_count, totals, created_at, confirmed_at,
-  paid_at, block_number::text as block_number, network_fee_wei::text as network_fee_wei, usd_rates`;
+  paid_at, block_number::text as block_number, network_fee_wei::text as network_fee_wei, usd_rates,
+  created_by, requested_at, submitted_by, rejection,
+  ${VALID_APPROVALS} as approval_count`;
 
 /**
  * Snapshots every employee into a new draft run. The snapshot is what gets paid and later verified
@@ -255,15 +338,17 @@ export async function createRunFromEmployees(
   chainId: number,
   totals: Record<string, string>,
   employees: Employee[],
+  createdBy: string,
 ): Promise<{ run: Run; items: RunItem[] }> {
   const db = await getDb();
-  await db.query(`delete from payroll_runs where org_id = $1 and status = 'draft'`, [orgId]);
+  // A draft is one person's review in progress; replace only their own.
+  await db.query(`delete from payroll_runs where org_id = $1 and status = 'draft' and lower(coalesce(created_by, '')) = lower($2)`, [orgId, createdBy]);
   const { rows: idRows } = await db.query<{ id: string }>(`select gen_random_uuid()::text as id`);
   const id = idRows[0].id;
   const { rows } = await db.query<RunRow>(
-    `insert into payroll_runs (id, org_id, chain_id, onchain_ref, recipient_count, totals)
-     values ($1, $2, $3, $4, $5, $6) returning ${RUN_COLUMNS}`,
-    [id, orgId, chainId, onchainRef(id), employees.length, JSON.stringify(totals)],
+    `insert into payroll_runs (id, org_id, chain_id, onchain_ref, recipient_count, totals, created_by)
+     values ($1, $2, $3, $4, $5, $6, $7) returning ${RUN_COLUMNS}`,
+    [id, orgId, chainId, onchainRef(id), employees.length, JSON.stringify(totals), createdBy],
   );
   const items: RunItem[] = [];
   for (const [i, e] of employees.entries()) {
@@ -343,12 +428,116 @@ export async function listRuns(orgId: string): Promise<Run[]> {
   return rows.map(toRun);
 }
 
-export async function markRunSubmitted(orgId: string, id: string, txHash: string): Promise<Run | null> {
+/**
+ * Records the payroll transaction. Only moves a run that is still sendable, and only with enough
+ * approvals for the company's current rule (checked again here, in the same statement, so a
+ * rule raised after approval still applies).
+ */
+export async function markRunSubmitted(
+  orgId: string,
+  id: string,
+  txHash: string,
+  submittedBy: string,
+  verifiedWallets: string[] | null,
+): Promise<Run | null> {
   const db = await getDb();
   const { rows } = await db.query<RunRow>(
-    `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = now()
-     where org_id = $1 and id = $2 and status = 'draft' returning ${RUN_COLUMNS}`,
-    [orgId, id, txHash],
+    `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = now(), submitted_by = $4,
+       verified_wallets = coalesce(verified_wallets, $5::jsonb)
+     where org_id = $1 and id = $2
+       and (status in ('pending', 'approved')
+            or (status = 'draft' and (select approvals_required from organizations where id = $1) = 0))
+       and ${VALID_APPROVALS} >= (select approvals_required from organizations where id = $1)
+     returning ${RUN_COLUMNS}`,
+    [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+/** Sends a draft for approval (or straight to the treasury when no approvals are required). */
+export async function requestApproval(orgId: string, id: string, by: string, verifiedWallets: string[]): Promise<Run | null> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `update payroll_runs set requested_at = now(), verified_wallets = $4,
+       status = case when (select approvals_required from organizations where id = $1) = 0 then 'approved' else 'pending' end
+     where org_id = $1 and id = $2 and status = 'draft' and lower(created_by) = lower($3)
+     returning ${RUN_COLUMNS}`,
+    [orgId, id, by, JSON.stringify(verifiedWallets)],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+/** The run that is waiting for approval, approved, or sent and not yet verified. At most one at a time. */
+export async function openRun(orgId: string): Promise<Run | null> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `select ${RUN_COLUMNS} from payroll_runs where org_id = $1 and status in ('pending', 'approved', 'submitted')
+     order by created_at desc limit 1`,
+    [orgId],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+export async function runVerifiedWallets(id: string): Promise<string[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ v: string[] | string | null }>(`select verified_wallets as v from payroll_runs where id = $1`, [id]);
+  return json(rows[0]?.v ?? null) ?? [];
+}
+
+export async function listApprovals(orgId: string, runId: string): Promise<Approval[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ approver: string; name: string | null; created_at: Date | string; signature: string }>(
+    `select a.approver, m.name, a.created_at, a.signature from run_approvals a
+     join payroll_runs r on r.id = a.run_id
+     join members m on m.org_id = r.org_id and lower(m.address) = lower(a.approver) and m.role in ('owner', 'admin')
+     where r.org_id = $1 and a.run_id = $2 order by a.created_at`,
+    [orgId, runId],
+  );
+  return rows.map((r) => ({ approver: r.approver, name: r.name ?? "", at: iso(r.created_at)!, signature: r.signature }));
+}
+
+/**
+ * Stores a verified approval and promotes the run to approved once it has enough. Idempotent for
+ * the same approver. Returns null if the run isn't waiting for approval.
+ */
+export async function addApproval(orgId: string, runId: string, approver: string, message: string, signature: string): Promise<Run | null> {
+  const db = await getDb();
+  const { rows: ok } = await db.query<{ id: string }>(
+    `select id from payroll_runs where org_id = $1 and id = $2 and status in ('pending', 'approved')`,
+    [orgId, runId],
+  );
+  if (!ok[0]) return null;
+  await db.query(
+    `insert into run_approvals (run_id, approver, message, signature) values ($1, $2, $3, $4) on conflict do nothing`,
+    [runId, approver, message, signature],
+  );
+  const { rows } = await db.query<RunRow>(
+    `update payroll_runs set status = case
+         when ${VALID_APPROVALS} >= (select approvals_required from organizations where id = $1)
+         then 'approved' else status end
+     where org_id = $1 and id = $2 and status in ('pending', 'approved')
+     returning ${RUN_COLUMNS}`,
+    [orgId, runId],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+export async function rejectRun(orgId: string, runId: string, by: string, reason: string): Promise<Run | null> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `update payroll_runs set status = 'rejected', rejection = $3
+     where org_id = $1 and id = $2 and status in ('pending', 'approved') returning ${RUN_COLUMNS}`,
+    [orgId, runId, JSON.stringify({ by, reason, at: new Date().toISOString() })],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+export async function cancelRun(orgId: string, runId: string): Promise<Run | null> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `update payroll_runs set status = 'cancelled' where org_id = $1 and id = $2 and status in ('draft', 'pending', 'approved')
+     returning ${RUN_COLUMNS}`,
+    [orgId, runId],
   );
   return rows[0] ? toRun(rows[0]) : null;
 }

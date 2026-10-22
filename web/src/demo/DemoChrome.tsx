@@ -2,17 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { answer, subscribe, type WalletPrompt } from "./wallet-bus";
-import { resetDemo } from "./mock-api";
+import { chain, resetDemo } from "./mock-api";
+import { DEMO_ACCOUNTS, type DemoAccount } from "./sim-chain";
 
 export function DemoBanner() {
   const [confirming, setConfirming] = useState(false);
+  const [account, setAccount] = useState<DemoAccount>(chain.active);
   return (
     <div className="bg-night text-white">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2 text-[13px]">
         <span className="rounded bg-white/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide">Demo</span>
         <span className="flex-1 text-white/85">
-          Simulated network and test wallet with an example team. No real money moves.
+          Simulated network and test wallet with an example team. No real money moves. Payroll needs one approval: switch to Dana to approve.
         </span>
+        <label className="flex items-center gap-2 text-white/85">
+          Test wallet account
+          <select
+            value={account}
+            onChange={(e) => {
+              const next = e.target.value as DemoAccount;
+              setAccount(next);
+              chain.switchAccount(next);
+            }}
+            className="min-h-8 rounded-md border border-white/20 bg-white/10 px-2 font-medium text-white [&>option]:text-ink"
+          >
+            {(Object.keys(DEMO_ACCOUNTS) as DemoAccount[]).map((k) => (
+              <option key={k} value={k}>{DEMO_ACCOUNTS[k].label}</option>
+            ))}
+          </select>
+        </label>
         {confirming ? (
           <span className="flex items-center gap-2">
             <span className="text-white/85">Start over with fresh data?</span>

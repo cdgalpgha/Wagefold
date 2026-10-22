@@ -4,14 +4,14 @@ import { z } from "zod";
 import { MAX_PAYMENTS } from "@/lib/abi";
 import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS } from "@/lib/chains";
 import { sumByToken } from "@/lib/money";
-import { fail, json, readJson, requireSession } from "@/lib/server/http";
+import { fail, json, readJson, requireMember } from "@/lib/server/http";
 import { reviewRun } from "@/lib/changes";
-import { createRunFromEmployees, lastPaidRunItems, listEmployees, listRuns, paidWallets } from "@/lib/server/repo";
+import { createRunFromEmployees, lastPaidRunItems, listEmployees, listRuns, openRun, paidWallets } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await requireSession();
+  const session = await requireMember();
   if (session instanceof NextResponse) return session;
   return json({ runs: await listRuns(session.orgId) });
 }
@@ -20,8 +20,11 @@ const createInput = z.object({ chainId: z.number().int() });
 
 /** Pulls everyone from People into a new draft run: name, wallet and amount. */
 export async function POST(req: Request) {
-  const session = await requireSession();
+  const session = await requireMember("prepare");
   if (session instanceof NextResponse) return session;
+  // One payroll in flight at a time, so nobody approves or sends a run that another one replaced.
+  const open = await openRun(session.orgId);
+  if (open) return json({ error: "A payroll is already waiting for approval or being sent. Finish or cancel it first.", openRunId: open.id }, 409);
   const parsed = createInput.safeParse(await readJson(req));
   if (!parsed.success) return fail("Missing network.");
   const cfg = getChainConfig(parsed.data.chainId);
@@ -41,6 +44,6 @@ export async function POST(req: Request) {
     TOKEN_SYMBOLS.filter((s) => sums[s] > 0n).map((s) => [s, formatUnits(sums[s], TOKEN_DECIMALS)]),
   );
   const [previous, paid] = await Promise.all([lastPaidRunItems(session.orgId), paidWallets(session.orgId)]);
-  const { run, items } = await createRunFromEmployees(session.orgId, cfg.chain.id, totals, employees);
+  const { run, items } = await createRunFromEmployees(session.orgId, cfg.chain.id, totals, employees, session.address);
   return json({ run, items, review: reviewRun(previous, items, paid) }, 201);
 }

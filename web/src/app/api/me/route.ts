@@ -1,22 +1,24 @@
 import { NextResponse } from "next/server";
-import { fail, json, readJson, requireSession } from "@/lib/server/http";
-import { getOrganization, logActivity, updateOrganization } from "@/lib/server/repo";
+import { fail, json, readJson } from "@/lib/server/http";
+import { requireMember } from "@/lib/server/http";
+import { getOrganization, logActivity, membershipsFor, updateOrganization } from "@/lib/server/repo";
 import { orgPatchInput } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await requireSession();
+  const session = await requireMember();
   if (session instanceof NextResponse) return session;
   const org = await getOrganization(session.orgId);
   if (!org) return fail("Organization not found.", 404);
-  return json({ address: session.address, chainId: session.chainId, org });
+  const memberships = (await membershipsFor(session.address)).map(({ orgId, name, role }) => ({ orgId, name, role }));
+  return json({ address: session.address, chainId: session.chainId, org, role: session.role, memberships });
 }
 
 
 
 export async function PATCH(req: Request) {
-  const session = await requireSession();
+  const session = await requireMember("settings");
   if (session instanceof NextResponse) return session;
   const parsed = orgPatchInput.safeParse(await readJson(req));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid settings.");

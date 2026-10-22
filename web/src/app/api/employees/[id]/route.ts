@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fail, json, readJson, requireSession } from "@/lib/server/http";
+import { fail, json, readJson, requireMember } from "@/lib/server/http";
 import { personChanges } from "@/lib/activity";
 import { deleteEmployee, DuplicateWalletError, getEmployee, logActivity, updateEmployee } from "@/lib/server/repo";
 import { employeeInput, firstError } from "@/lib/validation";
@@ -9,7 +9,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, ctx: Ctx) {
   const params = await ctx.params;
-  const session = await requireSession();
+  const session = await requireMember("editPeople");
   if (session instanceof NextResponse) return session;
   if (!UUID_RE.test(params.id)) return fail("Person not found.", 404);
   const parsed = employeeInput.safeParse(await readJson(req));
@@ -31,7 +31,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
 export async function DELETE(_req: Request, ctx: Ctx) {
   const params = await ctx.params;
-  const session = await requireSession();
+  const session = await requireMember("editPeople");
   if (session instanceof NextResponse) return session;
   if (!UUID_RE.test(params.id)) return fail("Person not found.", 404);
   const removed = await deleteEmployee(session.orgId, params.id);

@@ -20,6 +20,9 @@ const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const KEYS = {
   treasury: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
   otherCompany: "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+  admin: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+  preparer: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+  viewer: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
 } as const;
 const RECIPIENTS = [
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
@@ -362,6 +365,140 @@ async function main() {
     assert.equal(cleared.body.org.name, "Northwind Labs");
   });
 
+  const addr = (k: keyof typeof KEYS) => privateKeyToAccount(KEYS[k]).address;
+  const prep = client();
+  const admin = client();
+  const viewer = client();
+  let run2: { id: string; onchainRef: Hex };
+  let items2: RunItem[];
+  let approval2: { message: string; signature: Hex };
+
+  await step("the owner builds a team, and only the owner can change it", async () => {
+    for (const [k, role, name] of [["admin", "admin", "Dana Okafor"], ["preparer", "preparer", "Sam Lee"], ["viewer", "viewer", "Ada (accountant)"]] as const) {
+      const res = await api("/api/team", { body: { address: addr(k), name, role } });
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+    }
+    assert.equal((await api("/api/team", { body: { address: addr("admin"), name: "Again", role: "admin" } })).status, 409);
+    assert.equal((await api("/api/team", { body: { address: addr("otherCompany"), name: "X", role: "owner" } })).status, 400);
+    assert.equal((await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 3 } })).status, 400); // only 2 can approve
+    const policy = await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 1 } });
+    assert.equal(policy.status, 200, JSON.stringify(policy.body));
+    assert.equal(policy.body.org.approvalsRequired, 1);
+    const team = await api("/api/team");
+    assert.deepEqual(team.body.members.map((m: { role: string }) => m.role), ["owner", "admin", "preparer", "viewer"]);
+  });
+
+  await step("a preparer signs in to the company and can prepare, but not approve, send or change the team", async () => {
+    await signIn(prep, KEYS.preparer);
+    const me = await prep("/api/me");
+    assert.equal(me.body.role, "preparer");
+    assert.equal(me.body.org.ownerAddress, addr("treasury"));
+    assert.equal((await prep("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 0 } })).status, 403);
+    assert.equal((await prep("/api/team", { body: { address: addr("otherCompany"), name: "Mallory", role: "admin" } })).status, 403);
+    assert.equal((await prep(`/api/team/${addr("admin")}`, { method: "DELETE" })).status, 403);
+    assert.equal((await prep("/api/me", { method: "PATCH", body: { name: "Hijacked" } })).status, 403);
+    const created = await prep("/api/runs", { body: { chainId: 31337 } });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    ({ run: run2, items: items2 } = created.body);
+    const requested = await prep(`/api/runs/${run2.id}/request`, { body: { verifiedWallets: [RECIPIENTS[0], "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc"] } });
+    assert.equal(requested.status, 200, JSON.stringify(requested.body));
+    assert.equal(requested.body.run.status, "pending");
+    assert.equal((await prep(`/api/runs/${run2.id}/approve`)).status, 403);
+    assert.equal((await prep(`/api/runs/${run2.id}/submit`, { body: { txHash: `0x${"ab".repeat(32)}` } })).status, 403);
+    const blocked = await api("/api/runs", { body: { chainId: 31337 } });
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.openRunId, run2.id);
+  });
+
+  await step("the treasury can't send a payroll that hasn't been approved", async () => {
+    const res = await api(`/api/runs/${run2.id}/submit`, { body: { txHash: `0x${"cd".repeat(32)}` } });
+    assert.equal(res.status, 409);
+    assert.match(res.body.error, /needs 1 approval/);
+  });
+
+  await step("approvals are wallet signatures the server checks against the exact run", async () => {
+    await signIn(admin, KEYS.admin);
+    await signIn(viewer, KEYS.viewer);
+    assert.equal((await admin("/api/me")).body.role, "admin");
+    const { body } = await admin(`/api/runs/${run2.id}/approve`);
+    assert.match(body.message, /Pay 3 people/);
+    assert.match(body.message, new RegExp(`Approver: ${addr("admin")}`));
+    // Signed by the wrong wallet.
+    const forged = await privateKeyToAccount(KEYS.viewer).signMessage({ message: body.message });
+    assert.equal((await admin(`/api/runs/${run2.id}/approve`, { body: { signature: forged } })).status, 401);
+    // Signed by the right wallet, but over different numbers.
+    const tampered = await privateKeyToAccount(KEYS.admin).signMessage({ message: body.message.replace("Pay 3 people", "Pay 2 people") });
+    assert.equal((await admin(`/api/runs/${run2.id}/approve`, { body: { signature: tampered } })).status, 401);
+    assert.equal((await viewer(`/api/runs/${run2.id}/approve`)).status, 403);
+    approval2 = { message: body.message, signature: await privateKeyToAccount(KEYS.admin).signMessage({ message: body.message }) };
+    const ok = await admin(`/api/runs/${run2.id}/approve`, { body: { signature: approval2.signature } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.run.status, "approved");
+    assert.equal(ok.body.run.approvalCount, 1);
+    assert.equal((await admin(`/api/runs/${run2.id}/approve`, { body: { signature: approval2.signature } })).body.run.approvalCount, 1);
+    assert.equal((await admin(`/api/runs/${run2.id}/submit`, { body: { txHash: `0x${"ef".repeat(32)}` } })).status, 403);
+    const detail = await viewer(`/api/runs/${run2.id}`);
+    assert.equal(detail.body.approvals[0].approver, addr("admin"));
+    assert.equal(detail.body.approvals[0].name, "Dana Okafor");
+    assert.deepEqual(detail.body.verifiedWallets, [RECIPIENTS[0]]);
+  });
+
+  await step("viewers can read everything and change nothing", async () => {
+    assert.equal((await viewer("/api/runs")).status, 200);
+    assert.equal((await viewer("/api/invoices")).status, 200);
+    assert.equal((await viewer("/api/employees", { body: { name: "X", wallet: RECIPIENTS[0], amount: "1", token: "USDC" } })).status, 403);
+    assert.equal((await viewer("/api/runs", { body: { chainId: 31337 } })).status, 403);
+    assert.equal((await viewer(`/api/runs/${run2.id}/cancel`, { body: {} })).status, 403);
+  });
+
+  await step("the treasury sends the approved payroll; it's verified and invoiced", async () => {
+    const before = (await api("/api/invoices")).body.invoices.length;
+    const tx = await pay(KEYS.treasury, run2.onchainRef, items2);
+    const sent = await api(`/api/runs/${run2.id}/submit`, { body: { txHash: tx } });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    const confirmed = await admin(`/api/runs/${run2.id}/confirm`, { body: {} });
+    assert.equal(confirmed.body.run.status, "confirmed", JSON.stringify(confirmed.body));
+    assert.equal((await api("/api/invoices")).body.invoices.length, before + 3);
+  });
+
+  await step("an approval can't be replayed on another run, and nobody approves their own payroll", async () => {
+    const r3 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await prep(`/api/runs/${r3.id}/request`, { body: { verifiedWallets: [] } });
+    assert.equal((await admin(`/api/runs/${r3.id}/approve`, { body: { signature: approval2.signature } })).status, 401);
+    const rejected = await admin(`/api/runs/${r3.id}/reject`, { body: { reason: "Wrong month" } });
+    assert.equal(rejected.body.run.status, "rejected");
+    assert.equal(rejected.body.run.rejection.reason, "Wrong month");
+    // Promote the preparer to admin: they still can't approve the run they prepared.
+    await api(`/api/team/${addr("preparer")}`, { method: "PATCH", body: { role: "admin" } });
+    const r4 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await prep(`/api/runs/${r4.id}/request`, { body: {} });
+    const own = await prep(`/api/runs/${r4.id}/approve`);
+    assert.equal(own.status, 403);
+    assert.match(own.body.error, /someone else/);
+    assert.equal((await prep(`/api/runs/${r4.id}/cancel`, { body: {} })).body.run.status, "cancelled");
+    assert.equal((await api(`/api/team/${addr("treasury")}`, { method: "DELETE" })).status, 404); // the owner can't be removed
+  });
+
+  await step("removing a teammate ends their access, and their approvals stop counting", async () => {
+    const r5 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await prep(`/api/runs/${r5.id}/request`, { body: {} });
+    const { body: m5 } = await admin(`/api/runs/${r5.id}/approve`);
+    const sig5 = await privateKeyToAccount(KEYS.admin).signMessage({ message: m5.message });
+    assert.equal((await admin(`/api/runs/${r5.id}/approve`, { body: { signature: sig5 } })).body.run.approvalCount, 1);
+    assert.equal((await api(`/api/team/${addr("admin")}`, { method: "DELETE" })).status, 200);
+    const after = await admin("/api/runs");
+    assert.equal(after.status, 401);
+    assert.equal((await api(`/api/runs/${r5.id}`)).body.run.approvalCount, 0);
+    const send = await api(`/api/runs/${r5.id}/submit`, { body: { txHash: `0x${"12".repeat(32)}` } });
+    assert.equal(send.status, 409);
+    assert.equal((await prep(`/api/runs/${r5.id}/cancel`, { body: {} })).body.run.status, "cancelled");
+    const { body } = await api("/api/activity");
+    const actions = body.activity.map((a: { action: string }) => a.action);
+    for (const a of ["member_added", "policy_updated", "run_requested", "run_approved", "run_rejected", "run_cancelled", "member_updated", "member_removed"]) {
+      assert.ok(actions.includes(a), `missing ${a}`);
+    }
+  });
+
   await step("another company's wallet can't see this team", async () => {
     const other = client();
     await signIn(other, KEYS.otherCompany);
@@ -375,6 +512,9 @@ async function main() {
     assert.equal((await other(`/api/runs/${run.id}`)).status, 404);
     assert.equal((await other("/api/records")).body.runs.length, 0);
     assert.equal((await other("/api/invoices")).body.invoices.length, 0);
+    // Nor approve this company's payroll, or switch into it.
+    assert.equal((await other(`/api/runs/${run.id}/approve`)).status, 404);
+    assert.equal((await other("/api/session/switch", { body: { orgId: me.body.org.id } })).status, 403);
     const theirs = (await other("/api/activity")).body.activity;
     assert.ok(theirs.every((a: { actor: string }) => a.actor === privateKeyToAccount(KEYS.otherCompany).address));
   });

@@ -7,12 +7,13 @@ import type { Org, Run } from "@/lib/types";
 
 const org: Org = {
   id: "o1", name: "Northwind", ownerAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", payDay: null,
-  legalName: "Northwind Labs Ltd", address: "1 Harbour St\nLondon", taxId: "GB1", invoicePrefix: "NW-", invoiceNote: "Thanks",
+  legalName: "Northwind Labs Ltd", address: "1 Harbour St\nLondon", taxId: "GB1", invoicePrefix: "NW-", invoiceNote: "Thanks", approvalsRequired: 0,
 };
 const run: Run = {
   id: "r1", chainId: 8453, onchainRef: "0x01", status: "confirmed", failureReason: null, txHash: `0x${"ab".repeat(32)}`,
   recipientCount: 1, totals: {}, createdAt: "2026-10-31T10:00:00Z", confirmedAt: "2026-10-31T10:00:00Z", paidAt: "2026-10-31T10:00:02Z",
   blockNumber: "1", networkFee: "0.00001", usdRates: { USDC: { rate: "0.9998", source: "Chainlink USDC/USD" } },
+  createdBy: null, requestedAt: null, submittedBy: null, approvalCount: 0, rejection: null,
 };
 const item = { employeeId: "e1", name: "Lucía Gómez", role: "Designer", wallet: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", amount: "6900", token: "USDC" as const };
 

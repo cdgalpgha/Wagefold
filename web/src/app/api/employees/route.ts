@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fail, json, readJson, requireSession } from "@/lib/server/http";
+import { fail, json, readJson, requireMember } from "@/lib/server/http";
 import { createEmployee, DuplicateWalletError, listEmployees, logActivity, type Employee } from "@/lib/server/repo";
 import { employeeInput, firstError } from "@/lib/validation";
 
@@ -9,14 +9,14 @@ const MAX_IMPORT = 1000;
 const MAX_EMPLOYEES = 2000;
 
 export async function GET() {
-  const session = await requireSession();
+  const session = await requireMember();
   if (session instanceof NextResponse) return session;
   return json({ employees: await listEmployees(session.orgId) });
 }
 
 /** Accepts one employee, or `{ employees: [...] }` for a CSV import. */
 export async function POST(req: Request) {
-  const session = await requireSession();
+  const session = await requireMember("editPeople");
   if (session instanceof NextResponse) return session;
   const body = await readJson(req);
   const existing = (await listEmployees(session.orgId)).length;

@@ -20,7 +20,8 @@ import {
   type PaidRun,
   type Payslip,
 } from "@/lib/records";
-import type { Activity, Me, Records, Run, RunStatus, RunWithItems } from "@/lib/types";
+import type { Activity, Me, Records, Run, RunDetail, RunStatus } from "@/lib/types";
+import { ApprovalPanel } from "./Approvals";
 import { copyText, useToast } from "./toast";
 import { Button, Card, CopyIcon, shortAddress, Skeleton, XIcon } from "./ui";
 
@@ -29,6 +30,10 @@ const STATUS: Record<RunStatus, { label: string; className: string }> = {
   submitted: { label: "Pending", className: "bg-brand-soft text-brand-dark" },
   failed: { label: "Not paid", className: "bg-bad-soft text-bad-text" },
   draft: { label: "Draft", className: "bg-line-soft text-ink-2" },
+  pending: { label: "Awaiting approval", className: "bg-warn-soft text-warn" },
+  approved: { label: "Approved", className: "bg-brand-soft text-brand-dark" },
+  rejected: { label: "Rejected", className: "bg-bad-soft text-bad-text" },
+  cancelled: { label: "Cancelled", className: "bg-line-soft text-ink-2" },
 };
 
 type View = "runs" | "activity";
@@ -177,7 +182,7 @@ function Exports({ me, runs }: { me: Me; runs: Run[] }) {
 function RunDetails({ run, me, onPayslip }: { run: Run; me: Me; onPayslip: (position: number) => void }) {
   const toast = useToast();
   const saved = useSaved();
-  const detail = useQuery({ queryKey: ["run", run.id], queryFn: () => api<RunWithItems>(`/api/runs/${run.id}`) });
+  const detail = useQuery({ queryKey: ["run", run.id], queryFn: () => api<RunDetail>(`/api/runs/${run.id}`) });
   const link = run.txHash ? explorerTx(run.chainId, run.txHash) : undefined;
   const paid = run.status === "confirmed";
   const rates = run.usdRates ? Object.entries(run.usdRates) : [];
@@ -201,6 +206,11 @@ function RunDetails({ run, me, onPayslip }: { run: Run; me: Me; onPayslip: (posi
             <dd>{rates.length ? rates.map(([t, r]) => `${t} ${r!.rate}`).join(" · ") : "—"}{rates.some(([, r]) => r!.source.startsWith("par")) ? " (par)" : ""}</dd>
           </div>
         </dl>
+      )}
+      {detail.data && (run.createdBy || detail.data.approvals.length > 0 || run.rejection) && (
+        <div className="pb-3">
+          <ApprovalPanel run={run} approvals={detail.data.approvals} required={detail.data.approvals.length ? Math.max(detail.data.approvals.length, 0) : 0} />
+        </div>
       )}
       {detail.isLoading ? (
         <Skeleton className="my-2 h-4 w-64" />

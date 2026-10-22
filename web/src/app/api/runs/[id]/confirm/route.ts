@@ -4,9 +4,9 @@ import { payrollAbi } from "@/lib/abi";
 import { getChainConfig, TOKEN_SYMBOLS } from "@/lib/chains";
 import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
-import { fail, json, requireSession } from "@/lib/server/http";
+import { fail, json, requireMember } from "@/lib/server/http";
 import { ratesAt } from "@/lib/server/prices";
-import { ensureInvoices, getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
+import { ensureInvoices, getOrganization, getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const params = await ctx.params;
-  const session = await requireSession();
+  const session = await requireMember();
   if (session instanceof NextResponse) return session;
   const found = await getRun(session.orgId, params.id).catch(() => null);
   if (!found) return fail("Payroll run not found.", 404);
@@ -56,8 +56,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!paid || paid.eventName !== "PayrollPaid") {
     return settle({ status: "failed", reason: "That transaction didn't pay this run." });
   }
-  if (paid.args.payer.toLowerCase() !== session.address.toLowerCase()) {
-    return settle({ status: "failed", reason: "The run was paid from a different wallet." });
+  // Funds must come from the company's treasury, whoever on the team asks for the check.
+  const org = await getOrganization(session.orgId);
+  if (!org || paid.args.payer.toLowerCase() !== org.ownerAddress.toLowerCase()) {
+    return settle({ status: "failed", reason: "The run was paid from a different wallet than the treasury." });
   }
   const actual = logs.flatMap((l) =>
     l.eventName === "PaymentSent" && l.args.runId.toLowerCase() === ref

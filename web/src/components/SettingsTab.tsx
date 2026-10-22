@@ -7,6 +7,8 @@ import { canSave, saveFile, type SaveResult } from "@/lib/download";
 import { paymentsCsv, toCsv } from "@/lib/records";
 import { isPayDay, LAST_DAY, payDayIcs, payDayLabel } from "@/lib/schedule";
 import type { Employee, Me, Org, Records } from "@/lib/types";
+import { can } from "@/lib/roles";
+import { TeamCard } from "./TeamCard";
 import { ThemeToggle } from "./ThemeToggle";
 import { useToast } from "./toast";
 import { Button, Card, Field, inputClass } from "./ui";
@@ -20,8 +22,9 @@ export function SettingsTab({ me }: { me: Me }) {
         <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">Settings</h1>
         <p className="mt-1 text-[15px] text-ink-2">Company details, your payday, and a copy of all your data.</p>
       </div>
-      <CompanyForm key={`${me.org.name}-${me.org.payDay}`} org={me.org} />
-      <InvoiceForm key={`${me.org.legalName}-${me.org.address}-${me.org.taxId}-${me.org.invoicePrefix}-${me.org.invoiceNote}`} org={me.org} />
+      <TeamCard me={me} />
+      <CompanyForm key={`${me.org.name}-${me.org.payDay}`} org={me.org} readOnly={!can(me.role, "settings")} />
+      <InvoiceForm key={`${me.org.legalName}-${me.org.address}-${me.org.taxId}-${me.org.invoicePrefix}-${me.org.invoiceNote}`} org={me.org} readOnly={!can(me.role, "settings")} />
       <Card className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
         <div className="flex-1 basis-56">
           <h2 className="text-base font-semibold">Appearance</h2>
@@ -42,7 +45,7 @@ function useSaveToast() {
   };
 }
 
-function CompanyForm({ org }: { org: Org }) {
+function CompanyForm({ org, readOnly }: { org: Org; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const saved = useSaveToast();
@@ -73,6 +76,7 @@ function CompanyForm({ org }: { org: Org }) {
   return (
     <Card className="p-5 sm:p-6">
       <form onSubmit={submit} className="flex flex-col gap-4" aria-labelledby="company-h">
+        <fieldset disabled={readOnly} className="contents">
         <h2 id="company-h" className="text-base font-semibold">Company</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Company name" hint="Shown on payslips.">
@@ -99,12 +103,13 @@ function CompanyForm({ org }: { org: Org }) {
             </Button>
           )}
         </div>
+        </fieldset>
       </form>
     </Card>
   );
 }
 
-function InvoiceForm({ org }: { org: Org }) {
+function InvoiceForm({ org, readOnly }: { org: Org; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const initial = {
@@ -138,6 +143,7 @@ function InvoiceForm({ org }: { org: Org }) {
   return (
     <Card className="p-5 sm:p-6">
       <form onSubmit={submit} className="flex flex-col gap-4" aria-labelledby="invoice-h">
+        <fieldset disabled={readOnly} className="contents">
         <div>
           <h2 id="invoice-h" className="text-base font-semibold">Invoice details</h2>
           <p className="mt-1 text-sm text-ink-2">
@@ -165,6 +171,7 @@ function InvoiceForm({ org }: { org: Org }) {
         <div>
           <Button type="submit" disabled={saving || !dirty}>Save invoice details</Button>
         </div>
+        </fieldset>
       </form>
     </Card>
   );

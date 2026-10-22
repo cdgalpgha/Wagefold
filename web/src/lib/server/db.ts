@@ -112,6 +112,45 @@ create table if not exists invoices (
 drop trigger if exists invoices_immutable on invoices;
 create trigger invoices_immutable before update or delete on invoices
   for each row execute function audit_events_append_only();
+
+-- Team: every wallet that can sign in to a company, with one role. The owner row is the treasury.
+create table if not exists members (
+  org_id uuid not null references organizations(id) on delete cascade,
+  address text not null,
+  name text not null default '',
+  role text not null check (role in ('owner', 'admin', 'preparer', 'viewer')),
+  added_by text,
+  created_at timestamptz not null default now(),
+  primary key (org_id, address)
+);
+create unique index if not exists members_org_address on members (org_id, lower(address));
+create index if not exists members_address on members (lower(address));
+create unique index if not exists members_one_owner on members (org_id) where role = 'owner';
+insert into members (org_id, address, role) select id, owner_address, 'owner' from organizations on conflict do nothing;
+
+-- Approvals: how many a run needs, who prepared it, and the signed approvals themselves.
+alter table organizations add column if not exists approvals_required smallint not null default 0
+  check (approvals_required between 0 and 5);
+alter table payroll_runs add column if not exists created_by text;
+alter table payroll_runs add column if not exists requested_at timestamptz;
+alter table payroll_runs add column if not exists submitted_by text;
+alter table payroll_runs add column if not exists verified_wallets jsonb;
+alter table payroll_runs add column if not exists rejection jsonb;
+alter table payroll_runs drop constraint if exists payroll_runs_status_check;
+alter table payroll_runs add constraint payroll_runs_status_check check (status in
+  ('draft', 'pending', 'approved', 'rejected', 'cancelled', 'submitted', 'confirmed', 'failed'));
+
+create table if not exists run_approvals (
+  run_id uuid not null references payroll_runs(id) on delete cascade,
+  approver text not null,
+  message text not null,
+  signature text not null,
+  created_at timestamptz not null default now(),
+  primary key (run_id, approver)
+);
+drop trigger if exists run_approvals_append_only on run_approvals;
+create trigger run_approvals_append_only before update or delete on run_approvals
+  for each row execute function audit_events_append_only();
 `;
 
 async function init(): Promise<Db> {

@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { useAccount } from "wagmi";
+import { useSession } from "@/hooks/useSession";
 import { api } from "@/lib/api";
+import { can } from "@/lib/roles";
 import { saveFile } from "@/lib/download";
 import { findLookalikes } from "@/lib/lookalike";
 import { toCsv } from "@/lib/records";
@@ -35,6 +37,9 @@ export function PeopleTab() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("added");
   const fileRef = useRef<HTMLInputElement>(null);
+  const session = useSession();
+  // Viewers see the team but can't change it; the server enforces the same rule.
+  const canEdit = can(session.data?.role, "editPeople");
   const all = employees.data ?? [];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["employees"] });
 
@@ -102,7 +107,7 @@ export function PeopleTab() {
     );
   }
 
-  const actions = (e: Employee) => (
+  const actions = (e: Employee) => !canEdit ? null : (
     <span className="inline-flex gap-1">
       <IconButton label={`Edit ${e.name}`} onClick={() => { setEditing(e); setNotice(null); }}>
         <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />
@@ -145,12 +150,16 @@ export function PeopleTab() {
               e.target.value = "";
             }}
           />
-          <Button variant="secondary" onClick={() => fileRef.current?.click()}>
-            Import CSV
-          </Button>
-          <Button onClick={() => { setEditing("new"); setNotice(null); }}>
-            <PlusIcon /> Add person
-          </Button>
+          {canEdit && (
+            <>
+              <Button variant="secondary" onClick={() => fileRef.current?.click()}>
+                Import CSV
+              </Button>
+              <Button onClick={() => { setEditing("new"); setNotice(null); }}>
+                <PlusIcon /> Add person
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -269,7 +278,6 @@ export function PeopleTab() {
             <p className="text-[13px] text-ink-2">
               CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>, plus optional <span className="font-mono">email, address, tax_id</span>
             </p>
-            {/* Artifact pages can't start downloads, so the demo build only shows the format. */}
             <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>
           </div>
         )}

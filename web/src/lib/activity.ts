@@ -27,6 +27,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** One line for the activity feed. Values come from the database, so everything is treated as plain text. */
 export function describeActivity(a: Activity): { title: string; detail?: string; tone: "neutral" | "warn" | "good" | "bad" } {
+  // Older entries or unknown actions still render as plain text.
   const d = a.detail;
   switch (a.action) {
     case "signed_in":
@@ -60,12 +61,39 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
       return { title: "Payroll verified on-chain", detail: `Transaction ${short(d.txHash)}`, tone: "good" };
     case "run_failed":
       return { title: "Payroll not recorded as paid", detail: str(d.reason), tone: "bad" };
+    case "run_requested":
+      return {
+        title: d.status === "approved" ? `Sent payroll for ${Number(d.recipients) || 0} people to the treasury` : `Asked for approval to pay ${Number(d.recipients) || 0} people`,
+        detail: Array.isArray(d.verifiedWallets) && d.verifiedWallets.length ? `${d.verifiedWallets.length} new or changed wallets confirmed by the preparer` : undefined,
+        tone: "neutral",
+      };
+    case "run_approved":
+      return { title: "Approved payroll with a wallet signature", detail: `${Number(d.approvals) || 0} approval${Number(d.approvals) === 1 ? "" : "s"} so far${d.status === "approved" ? " · ready to send" : ""}`, tone: "good" };
+    case "run_rejected":
+      return { title: "Rejected payroll", detail: str(d.reason), tone: "bad" };
+    case "run_cancelled":
+      return { title: "Cancelled a payroll before it was sent", tone: "neutral" };
+    case "member_added":
+      return { title: `Added ${str(d.name) || short(d.address)} to the team as ${str(d.role)}`, detail: short(d.address), tone: "warn" };
+    case "member_updated": {
+      const changes = (d.changes ?? {}) as Record<string, FieldChange>;
+      const parts = Object.entries(changes).map(([f, [b, n]]) => `${f} ${b} → ${n}`);
+      return { title: `Changed ${str(d.name) || short(d.address)}'s team access`, detail: parts.join(" · "), tone: "warn" };
+    }
+    case "member_removed":
+      return { title: `Removed ${str(d.name) || short(d.address)} from the team`, detail: `Was ${str(d.role)} · ${short(d.address)}`, tone: "warn" };
+    case "policy_updated": {
+      const [b, n] = ((d.changes as Record<string, FieldChange>)?.approvalsRequired ?? ["", ""]) as FieldChange;
+      return { title: "Changed the approval rule", detail: `Approvals needed ${b || "0"} → ${n || "0"}`, tone: "warn" };
+    }
     case "company_updated": {
       const changes = (d.changes ?? {}) as Record<string, FieldChange>;
       const NAMES: Record<string, string> = { payDay: "payday", legalName: "legal name", taxId: "tax ID", invoicePrefix: "invoice prefix", invoiceNote: "invoice note" };
       const parts = Object.entries(changes).map(([f, [b, n]]) => `${NAMES[f] ?? f} ${b || "not set"} → ${n || "not set"}`);
       return { title: "Updated company settings", detail: parts.join(" · "), tone: "neutral" };
     }
+    default:
+      return { title: String(a.action).replace(/_/g, " "), tone: "neutral" };
   }
 }
 

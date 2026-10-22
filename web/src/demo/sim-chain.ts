@@ -29,9 +29,17 @@ export const ADDRESSES = {
   USDC: getAddress("0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"),
   USDT: getAddress("0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0"),
 };
-// Hardhat's public test key #0. It only exists inside this simulation.
+// Hardhat's public test keys #0 and #6. They only exist inside this simulation.
 const treasury = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+const approver = privateKeyToAccount("0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e");
 export const TREASURY = treasury.address;
+export const APPROVER = approver.address;
+/** The test wallet holds two accounts so the demo can show approvals: the treasury, and an approver. */
+export const DEMO_ACCOUNTS = {
+  treasury: { account: treasury, label: "Treasury (owner)" },
+  approver: { account: approver, label: "Dana Okafor (CFO, approver)" },
+} as const;
+export type DemoAccount = keyof typeof DEMO_ACCOUNTS;
 const START = { USDC: 250_000_000_000n, USDT: 60_000_000_000n };
 
 type Log = { address: Address; topics: Hex[]; data: Hex };
@@ -39,6 +47,8 @@ type Tx = { hash: Hex; from: Address; to: Address; data: Hex; block: number; sta
 export type ChainState = {
   block: number;
   authorized: boolean;
+  /** Which of the test wallet's accounts is selected. */
+  active?: DemoAccount;
   balances: Record<string, string>;
   allowances: Record<string, string>;
   txs: Record<string, Tx>;
@@ -76,6 +86,19 @@ export class SimChain {
   }
   private emit(event: string, ...args: unknown[]) {
     this.listeners[event]?.forEach((fn) => fn(...args));
+  }
+
+  get active(): DemoAccount {
+    return this.state.active ?? "treasury";
+  }
+  private get current() {
+    return DEMO_ACCOUNTS[this.active].account;
+  }
+  /** Like picking another account in a real wallet: the app sees accountsChanged and asks to sign in again. */
+  switchAccount(name: DemoAccount) {
+    this.state.active = name;
+    this.persist();
+    if (this.state.authorized) this.emit("accountsChanged", [this.current.address]);
   }
 
   // Execution ---------------------------------------------------------------------------------
@@ -233,22 +256,22 @@ export class SimChain {
       case "net_version":
         return String(CHAIN_ID);
       case "eth_accounts":
-        return this.state.authorized ? [TREASURY] : [];
+        return this.state.authorized ? [this.current.address] : [];
       case "eth_requestAccounts":
       case "wallet_requestPermissions": {
         if (!this.state.authorized) {
           await ask({
             kind: "connect",
             title: "Connect to Wagefold?",
-            lines: [{ label: "Account", value: `${TREASURY.slice(0, 6)}…${TREASURY.slice(-4)}` }],
+            lines: [{ label: "Account", value: `${DEMO_ACCOUNTS[this.active].label} · ${this.current.address.slice(0, 6)}…${this.current.address.slice(-4)}` }],
             note: "Wagefold will see your address and balances. It can't move funds without your approval.",
             confirmLabel: "Connect",
           });
           this.state.authorized = true;
           this.persist();
-          this.emit("accountsChanged", [TREASURY]);
+          this.emit("accountsChanged", [this.current.address]);
         }
-        return method === "eth_requestAccounts" ? [TREASURY] : [{ parentCapability: "eth_accounts" }];
+        return method === "eth_requestAccounts" ? [this.current.address] : [{ parentCapability: "eth_accounts" }];
       }
       case "wallet_revokePermissions":
         this.state.authorized = false;
@@ -278,7 +301,7 @@ export class SimChain {
       }
       case "eth_estimateGas":
         try {
-          this.execute(getAddress(p[0].from ?? TREASURY), [{ to: p[0].to, data: p[0].data ?? p[0].input }], false);
+          this.execute(getAddress(p[0].from ?? this.current.address), [{ to: p[0].to, data: p[0].data ?? p[0].input }], false);
         } catch (err) {
           throw rpcError(3, `execution reverted: ${(err as Error).message}`);
         }
@@ -290,11 +313,16 @@ export class SimChain {
         await ask({
           kind: "sign",
           title: "Signature request",
-          lines: [{ label: "Message", value: safeText(message) }],
-          note: "Signing proves this wallet is yours. It doesn't move funds or cost gas.",
+          lines: [
+            { label: "Account", value: DEMO_ACCOUNTS[this.active].label },
+            { label: "Message", value: safeText(message) },
+          ],
+          note: safeText(message).startsWith("Wagefold payroll approval")
+            ? "This approves exactly the payroll described above. It doesn't move funds or cost gas."
+            : "Signing proves this wallet is yours. It doesn't move funds or cost gas.",
           confirmLabel: "Sign",
         });
-        return treasury.signMessage({ message: { raw: message } });
+        return this.current.signMessage({ message: { raw: message } });
       }
       case "eth_sendTransaction": {
         const tx = p[0] as { from: Address; to: Address; data?: Hex; input?: Hex };
@@ -325,7 +353,7 @@ export class SimChain {
         const calls = req.calls.map((c) => ({ to: getAddress(c.to), data: c.data }));
         await this.confirm(calls);
         try {
-          return { id: this.record(getAddress(req.from ?? TREASURY), calls) };
+          return { id: this.record(getAddress(req.from ?? this.current.address), calls) };
         } catch (err) {
           throw rpcError(-32000, `execution reverted: ${(err as Error).message}`);
         }
@@ -372,7 +400,7 @@ export class SimChain {
       const { functionName } = decodeFunctionData({ abi: payrollAbi, data: tx.data });
       if (functionName === "MAX_PAYMENTS") return encodeFunctionResult({ abi: payrollAbi, functionName, result: BigInt(MAX_PAYMENTS) });
       try {
-        this.execute(getAddress(tx.from ?? TREASURY), [{ to, data: tx.data }], false); // simulate pay()
+        this.execute(getAddress(tx.from ?? this.current.address), [{ to, data: tx.data }], false); // simulate pay()
       } catch (err) {
         throw rpcError(3, `execution reverted: ${(err as Error).message}`);
       }
