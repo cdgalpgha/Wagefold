@@ -4,9 +4,10 @@ import { deleteEmployee, DuplicateWalletError, updateEmployee } from "@/lib/serv
 import { employeeInput, firstError } from "@/lib/validation";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
-export async function PATCH(req: Request, { params }: Ctx) {
+export async function PATCH(req: Request, ctx: Ctx) {
+  const params = await ctx.params;
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
   if (!UUID_RE.test(params.id)) return fail("Person not found.", 404);
@@ -21,7 +22,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(_req: Request, ctx: Ctx) {
+  const params = await ctx.params;
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
   if (!UUID_RE.test(params.id)) return fail("Person not found.", 404);

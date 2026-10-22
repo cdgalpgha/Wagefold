@@ -2,7 +2,15 @@ import { getAddress, keccak256, stringToHex, type Address, type Hex } from "viem
 import type { ChainConfig, TokenSymbol } from "./chains";
 import { toUnits } from "./money";
 
-export type RunItem = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+export type RunItem = {
+  name: string;
+  role: string;
+  wallet: string;
+  amount: string;
+  token: TokenSymbol;
+  /** Links the snapshot back to the person in People, so changes between runs can be detected. */
+  employeeId?: string | null;
+};
 export type Payment = { token: Address; to: Address; amount: bigint };
 
 /** The bytes32 id written on-chain so a transaction can be matched back to its payroll run. */

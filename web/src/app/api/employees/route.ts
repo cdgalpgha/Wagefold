@@ -5,6 +5,8 @@ import { employeeInput, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 const MAX_IMPORT = 1000;
+/** Per-company cap: far above any real team, low enough that a hijacked session can't flood the database. */
+const MAX_EMPLOYEES = 2000;
 
 export async function GET() {
   const session = await requireSession();
@@ -17,10 +19,12 @@ export async function POST(req: Request) {
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
   const body = await readJson(req);
+  const existing = (await listEmployees(session.orgId)).length;
 
   if (body && typeof body === "object" && Array.isArray((body as { employees?: unknown }).employees)) {
     const rows = (body as { employees: unknown[] }).employees;
     if (rows.length > MAX_IMPORT) return fail(`Import up to ${MAX_IMPORT} people at a time.`);
+    if (existing + rows.length > MAX_EMPLOYEES) return fail(`A company can have up to ${MAX_EMPLOYEES} people.`);
     const created: Employee[] = [];
     const errors: { row: number; error: string }[] = [];
     for (const [i, row] of rows.entries()) {
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
     return json({ created, errors }, created.length ? 201 : 400);
   }
 
+  if (existing >= MAX_EMPLOYEES) return fail(`A company can have up to ${MAX_EMPLOYEES} people.`);
   const parsed = employeeInput.safeParse(body);
   if (!parsed.success) return fail(firstError(parsed.error));
   try {

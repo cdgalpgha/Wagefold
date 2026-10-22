@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * Reads the transaction from the chain and only marks the run paid if the payroll contract paid
  * exactly the snapshotted people and amounts, from this organization's treasury wallet.
  */
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const params = await ctx.params;
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
   const found = await getRun(session.orgId, params.id).catch(() => null);

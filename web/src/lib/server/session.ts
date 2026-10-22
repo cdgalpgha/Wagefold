@@ -35,11 +35,11 @@ export async function createSessionCookie(session: Session): Promise<void> {
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .sign(secret());
-  cookies().set(SESSION_COOKIE, token, cookieOptions(SESSION_TTL_SECONDS));
+  (await cookies()).set(SESSION_COOKIE, token, cookieOptions(SESSION_TTL_SECONDS));
 }
 
 export async function readSession(): Promise<Session | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
@@ -50,6 +50,6 @@ export async function readSession(): Promise<Session | null> {
   }
 }
 
-export function clearSessionCookie(): void {
-  cookies().set(SESSION_COOKIE, "", cookieOptions(0));
+export async function clearSessionCookie(): Promise<void> {
+  (await cookies()).set(SESSION_COOKIE, "", cookieOptions(0));
 }

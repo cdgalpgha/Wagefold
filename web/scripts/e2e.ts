@@ -47,10 +47,11 @@ const publicClient = createPublicClient({ chain: hardhat, transport: http() });
 /** Minimal cookie-keeping HTTP client, one per signed-in user. */
 function client() {
   const jar = new Map<string, string>();
-  return async function call<T = any>(p: string, init: { method?: string; body?: unknown } = {}) {
+  return async function call<T = any>(p: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
     const res = await fetch(BASE + p, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       headers: {
+        ...init.headers,
         ...(init.body === undefined ? {} : { "content-type": "application/json" }),
         cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; "),
       },
@@ -62,7 +63,7 @@ function client() {
       if (v) jar.set(k, v);
       else jar.delete(k);
     }
-    return { status: res.status, body: (await res.json().catch(() => null)) as T };
+    return { status: res.status, headers: res.headers, body: (await res.json().catch(() => null)) as T };
   };
 }
 
@@ -130,6 +131,26 @@ async function main() {
     assert.equal(res.status, 401);
   });
 
+  await step("rejects a signature collected by a phishing site and replayed with a spoofed host header", async () => {
+    const attacker = client();
+    const { body } = await attacker<{ nonce: string }>("/api/auth/nonce");
+    const victim = privateKeyToAccount(KEYS.treasury);
+    // The victim signs a normal-looking sign-in on evil.example; the wallet shows no warning because the domain matches.
+    const message = createSiweMessage({ address: victim.address, chainId: 31337, domain: "evil.example", uri: "https://evil.example", nonce: body.nonce, version: "1" });
+    const signature = await victim.signMessage({ message });
+    const res = await attacker("/api/auth/verify", { body: { message, signature }, headers: { "x-forwarded-host": "evil.example" } });
+    assert.equal(res.status, 401, JSON.stringify(res.body));
+  });
+
+  await step("sends anti-clickjacking and no-cache headers", async () => {
+    const page = await fetch(BASE + "/");
+    assert.match(page.headers.get("content-security-policy") ?? "", /frame-ancestors 'self' https:\/\/app\.safe\.global/);
+    assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(page.headers.get("x-powered-by"), null);
+    const res = await api("/api/auth/nonce");
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
+
   const treasury = await step("signs in with the treasury wallet (SIWE)", async () => {
     await signIn(api, KEYS.treasury);
     const me = await api("/api/me");
@@ -174,6 +195,8 @@ async function main() {
     assert.equal(res.status, 201, JSON.stringify(res.body));
     ({ run, items } = res.body);
     assert.equal(items.length, 3);
+    assert.equal(res.body.review.firstRun, true);
+    assert.equal(res.body.review.newWallets.length, 3);
     assert.deepEqual(run.totals, { USDC: "9400.5", USDT: "6900" });
   });
 
@@ -207,6 +230,26 @@ async function main() {
     assert.equal(await balance(cfg.tokens.USDT!.address, RECIPIENTS[2]), startBalances[2] + usd(6900));
   });
 
+  await step("flags a changed wallet in the next run's review", async () => {
+    const { body } = await api("/api/employees");
+    const maya = body.employees.find((e: { name: string }) => e.name === "Maya Chen");
+    const newWallet = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65";
+    await api(`/api/employees/${maya.id}`, { method: "PATCH", body: { ...maya, wallet: newWallet } });
+    const res = await api("/api/runs", { body: { chainId: 31337 } });
+    assert.equal(res.body.review.firstRun, false);
+    assert.deepEqual(
+      res.body.review.changes.map((c: { kind: string; name: string }) => `${c.kind}:${c.name}`),
+      ["wallet:Maya Chen"],
+    );
+    assert.deepEqual(res.body.review.newWallets, [newWallet]);
+    await api(`/api/employees/${maya.id}`, { method: "PATCH", body: maya });
+  });
+
+  await step("returns 404, not a server error, for malformed ids", async () => {
+    assert.equal((await api("/api/runs/not-a-uuid")).status, 404);
+    assert.equal((await api("/api/employees/not-a-uuid", { method: "DELETE" })).status, 404);
+  });
+
   await step("won't mark a run paid using another run's transaction", async () => {
     const next = await api("/api/runs", { body: { chainId: 31337 } });
     await api(`/api/runs/${next.body.run.id}/submit`, { body: { txHash } });
@@ -226,6 +269,11 @@ async function main() {
     await signIn(other, KEYS.otherCompany);
     const { body } = await other("/api/employees");
     assert.equal(body.employees.length, 0);
+    // Trying to write into the first company by passing its id is ignored.
+    const me = await api("/api/me");
+    await other("/api/employees", { body: { name: "Intruder", wallet: "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", amount: "1", token: "USDC", orgId: me.body.org.id } });
+    const mine = await api("/api/employees");
+    assert.ok(!mine.body.employees.some((e: { name: string }) => e.name === "Intruder"));
     assert.equal((await other(`/api/runs/${run.id}`)).status, 404);
   });
 

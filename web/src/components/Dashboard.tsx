@@ -39,9 +39,9 @@ export function Dashboard({ me }: { me: Me }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-5 px-6 py-2.5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
           <Logo className="h-7" />
-          <nav aria-label="Main" className="flex flex-1 gap-1">
+          <nav aria-label="Main" className="order-last flex w-full gap-1 sm:order-none sm:w-auto sm:flex-1">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -56,13 +56,13 @@ export function Dashboard({ me }: { me: Me }) {
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-3 rounded-full border border-line py-1.5 pl-3.5 pr-1.5">
+          <div className="ml-auto flex items-center gap-3 rounded-full border border-line py-1.5 pl-3.5 pr-1.5">
             <span className={`h-2 w-2 rounded-full ${cfg ? "bg-good-dot" : "bg-[#E8A33A]"}`} aria-hidden="true" />
             <span className="flex flex-col">
               <span className="text-[13px] font-semibold">
                 {connector?.name ?? "Wallet"} · <span className="font-mono font-medium">{shortAddress(me.address)}</span>
               </span>
-              <span className="tabular text-xs text-ink-2">
+              <span className="tabular hidden text-xs text-ink-2 sm:block">
                 {cfg
                   ? symbols.map((s) => `${balances[s] === undefined ? "…" : formatAmount(balances[s]!)} ${s}`).join(" · ") +
                     ` on ${cfg.chain.name}`
@@ -75,7 +75,7 @@ export function Dashboard({ me }: { me: Me }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-16 pt-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
         {!cfg ? (
           <div className="mx-auto max-w-xl">
             <NetworkSwitcher />

@@ -5,7 +5,8 @@ import { MAX_PAYMENTS } from "@/lib/abi";
 import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS } from "@/lib/chains";
 import { sumByToken } from "@/lib/money";
 import { fail, json, readJson, requireSession } from "@/lib/server/http";
-import { createRunFromEmployees, listEmployees, listRuns } from "@/lib/server/repo";
+import { reviewRun } from "@/lib/changes";
+import { createRunFromEmployees, lastPaidRunItems, listEmployees, listRuns, paidWallets } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
   const totals = Object.fromEntries(
     TOKEN_SYMBOLS.filter((s) => sums[s] > 0n).map((s) => [s, formatUnits(sums[s], TOKEN_DECIMALS)]),
   );
+  const [previous, paid] = await Promise.all([lastPaidRunItems(session.orgId), paidWallets(session.orgId)]);
   const { run, items } = await createRunFromEmployees(session.orgId, cfg.chain.id, totals, employees);
-  return json({ run, items }, 201);
+  return json({ run, items, review: reviewRun(previous, items, paid) }, 201);
 }

@@ -8,14 +8,15 @@ import { api } from "@/lib/api";
 import { getChainConfig, type ChainConfig } from "@/lib/chains";
 import { friendlyError } from "@/lib/errors";
 import { buildPayments, requiredAllowances, type RunItem } from "@/lib/payments";
-import type { Run, RunWithItems } from "@/lib/types";
+import type { RunReview } from "@/lib/changes";
+import type { NewRun, Run } from "@/lib/types";
 
 export type Phase =
   | { kind: "idle" }
   | { kind: "preparing" }
-  | { kind: "review"; run: Run; items: RunItem[] }
+  | { kind: "review"; run: Run; items: RunItem[]; review: RunReview }
   | { kind: "approving"; run: Run; items: RunItem[]; symbol: string; step: number; steps: number }
-  | { kind: "confirm"; run: Run; items: RunItem[] }
+  | { kind: "confirm"; run: Run; items: RunItem[]; batched: boolean }
   | { kind: "sending"; run: Run; items: RunItem[]; txHash?: Hex }
   | { kind: "verifying"; run: Run; items: RunItem[]; txHash: Hex }
   | { kind: "done"; run: Run; items: RunItem[] }
@@ -41,8 +42,8 @@ export function usePayroll() {
     if (!chainId) return;
     setPhase({ kind: "preparing" });
     try {
-      const { run, items } = await api<RunWithItems>("/api/runs", { body: { chainId } });
-      setPhase({ kind: "review", run, items });
+      const { run, items, review } = await api<NewRun>("/api/runs", { body: { chainId } });
+      setPhase({ kind: "review", run, items, review });
     } catch (err) {
       setPhase({ kind: "error", message: friendlyError(err) });
     }
@@ -78,7 +79,7 @@ export function usePayroll() {
 
         // 2a. Wallets that support atomic batches (EIP-5792) approve and pay with one confirmation.
         if (approvals.length && (await supportsAtomicBatch(walletClient, address, run.chainId))) {
-          setPhase({ kind: "confirm", run, items });
+          setPhase({ kind: "confirm", run, items, batched: true });
           const calls = [
             ...approvals.map((a) => ({
               to: a.token,
@@ -107,7 +108,7 @@ export function usePayroll() {
             });
             await publicClient.waitForTransactionReceipt({ hash });
           }
-          setPhase({ kind: "confirm", run, items });
+          setPhase({ kind: "confirm", run, items, batched: false });
           const { request } = await publicClient.simulateContract({
             address: cfg.payroll, abi: payrollAbi, functionName: "pay", args: [run.onchainRef, payments], account: address,
           });

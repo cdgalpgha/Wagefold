@@ -4,7 +4,8 @@ import { markRunSubmitted } from "@/lib/server/repo";
 
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const params = await ctx.params;
   const session = await requireSession();
   if (session instanceof NextResponse) return session;
   const body = (await readJson(req)) as { txHash?: unknown } | null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { usePayroll, type Phase } from "@/hooks/usePayroll";
 import { useTreasury } from "@/hooks/useTreasury";
@@ -9,10 +9,12 @@ import { MAX_PAYMENTS } from "@/lib/abi";
 import { api } from "@/lib/api";
 import { explorerTx, getChainConfig, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
 import { formatAmount, sumByToken, totalsLabel } from "@/lib/money";
+import type { Change, RunReview } from "@/lib/changes";
 import type { RunItem } from "@/lib/payments";
 import type { Run } from "@/lib/types";
 import { useEmployees } from "./PeopleTab";
-import { Button, Card, CheckIcon, shortAddress, Spinner, XIcon } from "./ui";
+import { copyText, useToast } from "./toast";
+import { Badge, Button, Card, CheckIcon, CopyIcon, shortAddress, Skeleton, Spinner, XIcon } from "./ui";
 
 export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => void; onOpenHistory: () => void }) {
   const { phase, prepare, send, reset } = usePayroll();
@@ -30,9 +32,11 @@ export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => vo
   switch (phase.kind) {
     case "idle":
     case "preparing":
-      return <PayHome preparing={phase.kind === "preparing"} onRun={prepare} onOpenPeople={onOpenPeople} />;
+      return <PayHome preparing={phase.kind === "preparing"} onRun={prepare} onOpenPeople={onOpenPeople} balances={treasury.balances} />;
     case "review":
-      return <Review run={phase.run} items={phase.items} balances={treasury.balances} onBack={reset} onSend={() => send(phase.run, phase.items)} />;
+      return (
+        <Review run={phase.run} items={phase.items} review={phase.review} balances={treasury.balances} onBack={reset} onSend={() => send(phase.run, phase.items)} />
+      );
     case "approving":
     case "confirm":
     case "sending":
@@ -62,18 +66,44 @@ export function PayTab({ onOpenPeople, onOpenHistory }: { onOpenPeople: () => vo
   }
 }
 
-function PayHome({ preparing, onRun, onOpenPeople }: { preparing: boolean; onRun: () => void; onOpenPeople: () => void }) {
+function PayHome({
+  preparing,
+  onRun,
+  onOpenPeople,
+  balances,
+}: {
+  preparing: boolean;
+  onRun: () => void;
+  onOpenPeople: () => void;
+  balances: Partial<Record<TokenSymbol, bigint>>;
+}) {
   const employees = useEmployees();
   const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs) });
   const list = employees.data ?? [];
   const last = runs.data?.find((r) => r.status === "confirmed");
+  const totals = sumByToken(list);
+  const used = TOKEN_SYMBOLS.filter((s) => totals[s] > 0n);
+  const short = used.filter((s) => balances[s] !== undefined && balances[s]! < totals[s]);
+
+  if (employees.isLoading) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-6" aria-busy="true">
+        <Card className="flex flex-col gap-5 rounded-[20px] p-9">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-11 w-72" />
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-14 w-44 rounded-xl" />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <Card className="flex flex-col gap-6 rounded-[20px] p-9">
+      <Card className="flex flex-col gap-6 rounded-[20px] p-6 sm:p-9">
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium text-ink-2">Payroll</span>
-          <h1 className="text-[40px] font-semibold leading-tight tracking-tight">
+          <h1 className="text-[34px] font-semibold leading-tight tracking-tight sm:text-[40px]">
             Pay {list.length} {list.length === 1 ? "person" : "people"}
           </h1>
           <p className="tabular text-lg text-ink-2">{totalsLabel(sumByToken(list))}</p>
@@ -88,7 +118,36 @@ function PayHome({ preparing, onRun, onOpenPeople }: { preparing: boolean; onRun
             <button type="button" onClick={onOpenPeople} className="text-brand underline">People</button>.
           </span>
         </div>
+        {short.length > 0 && (
+          <p role="alert" className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
+            Top up {short.map((t) => `${formatAmount(totals[t] - balances[t]!)} ${t}`).join(" and ")} before paying everyone.
+          </p>
+        )}
       </Card>
+      {used.length > 0 && (
+        <section aria-labelledby="coverage-h" className="flex flex-col gap-3">
+          <h2 id="coverage-h" className="text-base font-semibold">Treasury</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {used.map((t) => {
+              const bal = balances[t];
+              const runsCovered = bal === undefined ? undefined : Number(bal / totals[t]);
+              return (
+                <Card key={t} className="flex flex-col gap-1 px-5 py-4">
+                  <span className="text-sm text-ink-2">{t} balance</span>
+                  <span className="tabular font-mono text-xl font-medium">{bal === undefined ? "…" : formatAmount(bal)}</span>
+                  <span className={`text-[13px] ${runsCovered !== undefined && runsCovered < 1 ? "font-medium text-warn" : "text-ink-2"}`}>
+                    {runsCovered === undefined
+                      ? "Checking balance…"
+                      : runsCovered < 1
+                        ? `Short by ${formatAmount(totals[t] - bal!)} for one payroll`
+                        : `Covers ${runsCovered} ${runsCovered === 1 ? "payroll" : "payrolls"} at ${formatAmount(totals[t])} each`}
+                  </span>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+      )}
       {last && (
         <section className="flex flex-col gap-3">
           <h2 className="text-base font-semibold">Last payroll</h2>
@@ -109,22 +168,29 @@ function PayHome({ preparing, onRun, onOpenPeople }: { preparing: boolean; onRun
 function Review({
   run,
   items,
+  review,
   balances,
   onBack,
   onSend,
 }: {
   run: Run;
   items: RunItem[];
+  review: RunReview;
   balances: Partial<Record<TokenSymbol, bigint>>;
   onBack: () => void;
   onSend: () => void;
 }) {
   const { chainId } = useAccount();
+  const toast = useToast();
+  const [checked, setChecked] = useState(false);
   const cfg = getChainConfig(run.chainId);
   const totals = sumByToken(items);
   const used = TOKEN_SYMBOLS.filter((s) => totals[s] > 0n);
   const short = used.filter((s) => balances[s] !== undefined && balances[s]! < totals[s]);
   const wrongChain = chainId !== run.chainId;
+  const changedWallets = new Set(review.changes.flatMap((c) => (c.kind === "wallet" ? [c.after.toLowerCase()] : [])));
+  const newWallets = new Set(review.newWallets.map((w) => w.toLowerCase()));
+  const toCheck = new Set([...changedWallets, ...newWallets]).size;
   const checks = [
     { ok: true, text: `All ${items.length} wallet addresses are valid EVM addresses` },
     {
@@ -134,7 +200,7 @@ function Review({
     { ok: items.length <= MAX_PAYMENTS, text: `${items.length} of ${MAX_PAYMENTS} payments allowed in one transaction` },
     { ok: !wrongChain, text: wrongChain ? `Switch your wallet to ${cfg?.chain.name}` : `Paying on ${cfg?.chain.name}` },
   ];
-  const canSend = checks.every((c) => c.ok);
+  const canSend = checks.every((c) => c.ok) && (toCheck === 0 || checked);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -143,8 +209,8 @@ function Review({
         Back
       </button>
       <div>
-        <h1 className="text-[32px] font-semibold tracking-tight">Review payroll</h1>
-        <p className="mt-1 text-base text-ink-2">Pulled {items.length} people from People just now.</p>
+        <h1 className="text-[28px] font-semibold tracking-tight sm:text-[32px]">Review payroll</h1>
+        <p className="mt-1 text-base text-ink-2">Pulled {items.length} {items.length === 1 ? "person" : "people"} from People just now.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -160,9 +226,11 @@ function Review({
         <Card className="flex flex-col gap-1 p-5">
           <span className="text-sm text-ink-2">Transactions</span>
           <span className="font-mono text-[26px] font-medium tracking-tight">1</span>
-          <span className="text-[13px] text-ink-2">Plus a one-time approval per token if needed</span>
+          <span className="text-[13px] text-ink-2">Plus a token approval if your wallet needs one</span>
         </Card>
       </div>
+
+      <Changes review={review} />
 
       <Card className="px-5 py-2">
         {checks.map((c) => (
@@ -177,39 +245,128 @@ function Review({
 
       <Card className="overflow-hidden">
         <h2 className="px-5 py-4 text-base font-semibold">Who gets paid</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-[#FAFBFC] text-left text-xs text-ink-3">
-                <th scope="col" className="border-y border-line px-5 py-2.5 font-medium">Name</th>
-                <th scope="col" className="border-y border-line px-5 py-2.5 font-medium">Wallet</th>
-                <th scope="col" className="border-y border-line px-5 py-2.5 text-right font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((i) => (
-                <tr key={i.wallet}>
-                  <td className="whitespace-nowrap border-b border-line-soft px-5 py-3">
-                    <span className="font-semibold">{i.name}</span>
-                    {i.role && <span className="text-ink-2"> · {i.role}</span>}
-                  </td>
-                  <td className="whitespace-nowrap border-b border-line-soft px-5 py-3 font-mono text-[13px] text-ink-2" title={i.wallet}>{shortAddress(i.wallet)}</td>
-                  <td className="tabular whitespace-nowrap border-b border-line-soft px-5 py-3 text-right font-mono">{formatAmount(i.amount)} {i.token}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-line-soft border-t border-line">
+          {items.map((i) => {
+            const w = i.wallet.toLowerCase();
+            return (
+              <li key={i.wallet} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3 text-sm">
+                <span className="min-w-0 flex-1 basis-48">
+                  <span className="font-semibold">{i.name}</span>
+                  {i.role && <span className="text-ink-2"> · {i.role}</span>}
+                </span>
+                <span className="flex items-center gap-2">
+                  {changedWallets.has(w) ? <Badge tone="bad">Wallet changed</Badge> : newWallets.has(w) && !review.firstRun ? <Badge tone="warn">First payment</Badge> : null}
+                  <button
+                    type="button"
+                    title={`${i.wallet} (click to copy)`}
+                    onClick={() => copyText(i.wallet, toast, "Address copied")}
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 font-mono text-[13px] text-ink-2 hover:bg-line-soft hover:text-ink"
+                  >
+                    {shortAddress(i.wallet)} <CopyIcon className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+                <span className="tabular min-w-[130px] text-right font-mono">
+                  {formatAmount(i.amount)} {i.token}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
+
+      {toCheck > 0 && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#F3D9A4] bg-warn-soft p-4 text-sm text-warn">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
+          <span>
+            <span className="font-semibold">
+              {review.firstRun
+                ? `I've checked all ${items.length} wallet addresses with each person.`
+                : `I've confirmed the ${toCheck} ${toCheck === 1 ? "wallet" : "wallets"} marked above with ${toCheck === 1 ? "that person" : "each person"}.`}
+            </span>{" "}
+            Payments to a wrong address can&apos;t be reversed, and changed addresses are a common way payroll gets stolen.
+          </span>
+        </label>
+      )}
 
       <div className="flex flex-col gap-2.5">
         <Button size="lg" className="min-h-[60px] text-lg" onClick={onSend} disabled={!canSend}>
           Send to {items.length} {items.length === 1 ? "person" : "people"}
         </Button>
-        <p className="text-center text-[13px] text-ink-2">Everyone is paid in one transaction from your wallet. Payments can&apos;t be reversed.</p>
+        <p className="text-center text-[13px] text-ink-2">
+          {toCheck > 0 && !checked ? "Confirm the wallet check above to continue." : "Everyone is paid in one transaction from your wallet. Payments can't be reversed."}
+        </p>
       </div>
     </div>
   );
+}
+
+function Changes({ review }: { review: RunReview }) {
+  if (review.firstRun) {
+    return (
+      <Card className="flex gap-3 p-5">
+        <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-dark" aria-hidden="true">1</span>
+        <p className="text-sm leading-relaxed">
+          <span className="font-semibold">This is your first payroll.</span> Every wallet is new, so check each address with its owner before you send.
+        </p>
+      </Card>
+    );
+  }
+  if (review.changes.length === 0) {
+    return (
+      <Card className="flex items-center gap-3 p-5">
+        <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-good-soft text-good"><CheckIcon className="h-3.5 w-3.5" /></span>
+        <p className="text-sm"><span className="font-semibold">No changes since the last payroll.</span> Same people, same wallets, same amounts.</p>
+      </Card>
+    );
+  }
+  return (
+    <Card className="overflow-hidden">
+      <h2 className="px-5 pt-4 text-base font-semibold">
+        {review.changes.length} {review.changes.length === 1 ? "change" : "changes"} since the last payroll
+      </h2>
+      <ul className="mt-2 divide-y divide-line-soft">
+        {review.changes.map((c, i) => (
+          <li key={`${c.kind}-${c.name}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-sm">
+            <ChangeBadge change={c} />
+            <span className="font-medium">{c.name}</span>
+            <span className="flex-1 basis-56 text-ink-2">{describe(c)}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function ChangeBadge({ change }: { change: Change }) {
+  switch (change.kind) {
+    case "wallet":
+      return <Badge tone="bad">Wallet changed</Badge>;
+    case "added":
+      return <Badge tone="brand">New</Badge>;
+    case "removed":
+      return <Badge tone="neutral">Removed</Badge>;
+    case "pay": {
+      if (change.token !== change.beforeToken) return <Badge tone="warn">Token changed</Badge>;
+      return Number(change.after) > Number(change.before) ? <Badge tone="warn">Pay up</Badge> : <Badge tone="warn">Pay down</Badge>;
+    }
+  }
+}
+
+function describe(c: Change): string {
+  switch (c.kind) {
+    case "wallet":
+      return `${shortAddress(c.before)} → ${shortAddress(c.after)}`;
+    case "added":
+      return `${formatAmount(c.amount)} ${c.token}`;
+    case "removed":
+      return `Was ${formatAmount(c.amount)} ${c.token}, not in this run`;
+    case "pay": {
+      if (c.token !== c.beforeToken) return `${formatAmount(c.before)} ${c.beforeToken} → ${formatAmount(c.after)} ${c.token}`;
+      const diff = Number(c.after) - Number(c.before);
+      const pct = Number(c.before) > 0 ? Math.round((diff / Number(c.before)) * 100) : 0;
+      return `${formatAmount(c.before)} → ${formatAmount(c.after)} ${c.token} (${diff > 0 ? "+" : ""}${pct}%)`;
+    }
+  }
 }
 
 function Progress({ phase }: { phase: Extract<Phase, { kind: "approving" | "confirm" | "sending" | "verifying" }> }) {
@@ -230,14 +387,15 @@ function Progress({ phase }: { phase: Extract<Phase, { kind: "approving" | "conf
     phase.kind === "approving"
       ? `Step ${phase.step} of ${phase.steps}. This lets the payroll contract send exactly this run's ${phase.symbol} from your wallet, nothing more.`
       : phase.kind === "confirm"
-        ? `One signature pays everyone: ${totalsLabel(sumByToken(phase.items))}.`
+        ? `${phase.batched ? "One confirmation approves the tokens and pays everyone" : "One signature pays everyone"}: ${totalsLabel(sumByToken(phase.items))}.`
         : phase.kind === "sending"
           ? "This usually takes a few seconds."
           : "Making sure every person got exactly what People says.";
+  const batched = phase.kind === "confirm" && phase.batched;
   const steps = [
     { label: "Payroll pulled from People", idx: -1 },
-    { label: "Tokens approved for this run", idx: 0 },
-    { label: `Signed in ${wallet}`, idx: 1 },
+    ...(batched ? [] : [{ label: "Tokens approved for this run", idx: 0 }]),
+    { label: batched ? `Approved and signed in ${wallet}, in one go` : `Signed in ${wallet}`, idx: 1 },
     { label: `Sent to ${n} wallets`, idx: 2 },
     { label: "Verified on-chain", idx: 3 },
   ];

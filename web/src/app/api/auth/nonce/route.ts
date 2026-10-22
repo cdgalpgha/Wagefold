@@ -7,6 +7,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const nonce = generateSiweNonce();
-  cookies().set(NONCE_COOKIE, nonce, cookieOptions(60 * 10));
+  (await cookies()).set(NONCE_COOKIE, nonce, cookieOptions(60 * 10));
   return json({ nonce });
 }

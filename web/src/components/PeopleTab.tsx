@@ -8,7 +8,8 @@ import { availableTokens, getChainConfig, type TokenSymbol } from "@/lib/chains"
 import { formatAmount, sumByToken, totalsLabel } from "@/lib/money";
 import type { Employee } from "@/lib/types";
 import { parseEmployeesCsv } from "@/lib/validation";
-import { Button, Card, Field, inputClass, shortAddress } from "./ui";
+import { copyText, useToast } from "./toast";
+import { Button, Card, CopyIcon, Field, inputClass, shortAddress, Skeleton } from "./ui";
 
 const TONES = ["#DCE4FD", "#E3F1E8", "#FBE9D7", "#EEE3FA", "#E0F0F4", "#F8E1E7"];
 type Draft = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
@@ -17,24 +18,51 @@ export function useEmployees() {
   return useQuery({ queryKey: ["employees"], queryFn: () => api<{ employees: Employee[] }>("/api/employees").then((r) => r.employees) });
 }
 
+type Sort = "added" | "name" | "pay";
+
 export function PeopleTab() {
   const { chainId } = useAccount();
   const tokens = availableTokens(getChainConfig(chainId));
   const queryClient = useQueryClient();
   const employees = useEmployees();
+  const toast = useToast();
   const [editing, setEditing] = useState<Employee | "new" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "good" | "bad"; text: string; details?: string[] } | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("added");
   const fileRef = useRef<HTMLInputElement>(null);
-  const list = employees.data ?? [];
+  const all = employees.data ?? [];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["employees"] });
 
+  const q = query.trim().toLowerCase();
+  const list = all
+    .map((e, i) => ({ e, tone: TONES[i % TONES.length] }))
+    .filter(({ e }) => !q || [e.name, e.role, e.wallet].some((v) => v.toLowerCase().includes(q)))
+    .sort((a, b) =>
+      sort === "name" ? a.e.name.localeCompare(b.e.name) : sort === "pay" ? Number(b.e.amount) - Number(a.e.amount) : 0,
+    );
+
   const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/employees/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      setConfirmDelete(null);
+    mutationFn: (e: Employee) => api(`/api/employees/${e.id}`, { method: "DELETE" }).then(() => e),
+    onSuccess: (e) => {
       refresh();
+      toast(`Removed ${e.name}`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            const { id: _id, ...rest } = e;
+            try {
+              await api("/api/employees", { body: rest });
+              toast(`${e.name} is back`, { tone: "good" });
+            } catch (err) {
+              toast((err as Error).message, { tone: "bad" });
+            }
+            refresh();
+          },
+        },
+      });
     },
+    onError: (err) => toast((err as Error).message, { tone: "bad" }),
   });
 
   async function importCsv(file: File) {
@@ -70,13 +98,34 @@ export function PeopleTab() {
     URL.revokeObjectURL(url);
   }
 
+  const actions = (e: Employee) => (
+    <span className="inline-flex gap-1">
+      <IconButton label={`Edit ${e.name}`} onClick={() => { setEditing(e); setNotice(null); }}>
+        <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />
+      </IconButton>
+      <IconButton label={`Remove ${e.name}`} onClick={() => remove.mutate(e)}>
+        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+      </IconButton>
+    </span>
+  );
+  const wallet = (e: Employee) => (
+    <button
+      type="button"
+      title={`${e.wallet} (click to copy)`}
+      onClick={() => copyText(e.wallet, toast, "Address copied")}
+      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 font-mono text-[13px] text-ink hover:bg-line-soft"
+    >
+      {shortAddress(e.wallet)} <CopyIcon className="h-3.5 w-3.5 text-ink-3" />
+    </button>
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[30px] font-semibold tracking-tight">People</h1>
+          <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">People</h1>
           <p className="tabular mt-1 text-[15px] text-ink-2">
-            {list.length} {list.length === 1 ? "person" : "people"} · {totalsLabel(sumByToken(list))} a month
+            {all.length} {all.length === 1 ? "person" : "people"} · {totalsLabel(sumByToken(all))} a month
           </p>
         </div>
         <div className="flex flex-wrap gap-2.5">
@@ -122,14 +171,48 @@ export function PeopleTab() {
           onCancel={() => setEditing(null)}
           onSaved={(name, isNew) => {
             setEditing(null);
-            setNotice({ kind: "good", text: isNew ? `${name} added. They'll be in the next payroll run.` : `${name} updated.` });
+            toast(isNew ? `${name} added. They'll be in the next payroll run.` : `${name} updated.`, { tone: "good" });
             refresh();
           }}
         />
       )}
 
+      {all.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative min-w-0 flex-1 basis-64">
+            <span className="sr-only">Search people</span>
+            <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, role or wallet" className={`${inputClass} pl-9`} />
+          </label>
+          <span className="flex items-center gap-2 text-sm text-ink-2">
+            <label htmlFor="people-sort">Sort</label>
+            <select id="people-sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={`${inputClass} w-auto`}>
+              <option value="added">Date added</option>
+              <option value="name">Name A–Z</option>
+              <option value="pay">Highest pay</option>
+            </select>
+          </span>
+        </div>
+      )}
+
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Phones: one card per person */}
+        <ul className="divide-y divide-line-soft sm:hidden">
+          {list.map(({ e, tone }) => (
+            <li key={e.id} className="flex items-start gap-3 px-4 py-3">
+              <Avatar name={e.name} tone={tone} />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="font-semibold">{e.name}</span>
+                <span className="text-[13px] text-ink-2">{e.role || "No role"}</span>
+                <span className="tabular font-mono text-sm">{formatAmount(e.amount)} {e.token}</span>
+                <span className="-ml-2">{wallet(e)}</span>
+              </div>
+              {actions(e)}
+            </li>
+          ))}
+        </ul>
+        {/* Wider screens: a table */}
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-[#FAFBFC] text-left text-xs font-medium text-ink-3">
@@ -141,48 +224,40 @@ export function PeopleTab() {
               </tr>
             </thead>
             <tbody>
-              {list.map((e, i) => (
-                <tr key={e.id} className="text-sm">
+              {list.map(({ e, tone }) => (
+                <tr key={e.id} className="text-sm hover:bg-[#FAFBFC]">
                   <td className="whitespace-nowrap border-b border-line-soft px-5 py-3">
                     <span className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-xs font-semibold" style={{ background: TONES[i % TONES.length] }} aria-hidden="true">
-                        {initials(e.name)}
-                      </span>
+                      <Avatar name={e.name} tone={tone} />
                       <span className="font-semibold">{e.name}</span>
                     </span>
                   </td>
                   <td className="whitespace-nowrap border-b border-line-soft px-5 py-3 text-ink-2">{e.role || "—"}</td>
-                  <td className="whitespace-nowrap border-b border-line-soft px-5 py-3 font-mono text-[13px]" title={e.wallet}>
-                    {shortAddress(e.wallet)}
-                  </td>
+                  <td className="whitespace-nowrap border-b border-line-soft px-3 py-1.5">{wallet(e)}</td>
                   <td className="tabular whitespace-nowrap border-b border-line-soft px-5 py-3 text-right font-mono">
                     {formatAmount(e.amount)} {e.token}
                   </td>
-                  <td className="whitespace-nowrap border-b border-line-soft px-3 py-1.5 text-right">
-                    {confirmDelete === e.id ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="text-[13px] text-ink-2">Remove {e.name.split(" ")[0]}?</span>
-                        <Button variant="danger" className="!min-h-9" onClick={() => remove.mutate(e.id)} disabled={remove.isPending}>Remove</Button>
-                        <Button variant="secondary" className="!min-h-9" onClick={() => setConfirmDelete(null)}>Keep</Button>
-                      </span>
-                    ) : (
-                      <span className="inline-flex gap-1">
-                        <IconButton label={`Edit ${e.name}`} onClick={() => { setEditing(e); setNotice(null); }}>
-                          <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />
-                        </IconButton>
-                        <IconButton label={`Remove ${e.name}`} onClick={() => setConfirmDelete(e.id)}>
-                          <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-                        </IconButton>
-                      </span>
-                    )}
-                  </td>
+                  <td className="whitespace-nowrap border-b border-line-soft px-3 py-1.5 text-right">{actions(e)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {employees.isLoading && <p className="px-5 py-8 text-center text-ink-2">Loading…</p>}
-        {!employees.isLoading && list.length === 0 && (
+        {employees.isLoading && (
+          <div className="flex flex-col gap-3 p-5" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="ml-auto h-4 w-24" />
+              </div>
+            ))}
+          </div>
+        )}
+        {!employees.isLoading && all.length > 0 && list.length === 0 && (
+          <p className="px-5 py-10 text-center text-sm text-ink-2">No one matches “{query}”.</p>
+        )}
+        {!employees.isLoading && all.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-5 py-12 text-center">
             <p className="text-base font-medium">No one here yet</p>
             <p className="max-w-md text-sm text-ink-2">Add each person&apos;s name, role, wallet address and monthly pay, or import a CSV.</p>
@@ -195,6 +270,14 @@ export function PeopleTab() {
         )}
       </Card>
     </div>
+  );
+}
+
+function Avatar({ name, tone }: { name: string; tone: string }) {
+  return (
+    <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-xs font-semibold" style={{ background: tone }} aria-hidden="true">
+      {initials(name)}
+    </span>
   );
 }
 

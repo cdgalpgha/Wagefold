@@ -8,6 +8,7 @@ import { parseSiweMessage } from "viem/siwe";
 import { MAX_PAYMENTS, payrollAbi } from "@/lib/abi";
 import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
 import { sumByToken } from "@/lib/money";
+import { reviewRun } from "@/lib/changes";
 import { buildPayments, onchainRef, samePayments, type RunItem } from "@/lib/payments";
 import type { Employee, Run } from "@/lib/types";
 import { employeeInput, firstError } from "@/lib/validation";
@@ -127,6 +128,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     if (parts.length === 1 && method === "GET") return [200, { employees: mine.map(publicEmployee) }];
     if (parts.length === 1 && method === "POST") {
       const rows = (body as { employees?: unknown[] } | null)?.employees;
+      if (mine.length + (Array.isArray(rows) ? rows.length : 1) > 2000) throw new HttpError(400, "A company can have up to 2000 people.");
       if (Array.isArray(rows)) {
         const created: Employee[] = [];
         const errors: { row: number; error: string }[] = [];
@@ -188,11 +190,14 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
         createdAt: new Date().toISOString(),
         confirmedAt: null,
       };
-      const items: RunItem[] = team.map((e) => ({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token as TokenSymbol }));
+      const items: RunItem[] = team.map((e) => ({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token as TokenSymbol, employeeId: e.id }));
+      const paidRuns = mine.filter((r) => r.status === "confirmed").sort((a, b) => (b.confirmedAt ?? "").localeCompare(a.confirmedAt ?? ""));
+      const previous = paidRuns[0] ? state.app.items[paidRuns[0].id] ?? null : null;
+      const paidWallets = paidRuns.flatMap((r) => (state.app.items[r.id] ?? []).map((i) => i.wallet));
       state.app.runs.push(run);
       state.app.items[id] = items;
       persist();
-      return [201, { run: publicRun(run), items }];
+      return [201, { run: publicRun(run), items, review: reviewRun(previous, items, paidWallets) }];
     }
     const run = need(mine.find((r) => r.id === parts[1]), 404, "Payroll run not found.");
     const items = state.app.items[run.id] ?? [];

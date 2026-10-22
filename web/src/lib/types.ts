@@ -1,4 +1,5 @@
 import type { TokenSymbol } from "./chains";
+import type { RunReview } from "./changes";
 import type { RunItem } from "./payments";
 
 export type Me = { address: string; chainId: number; org: { id: string; name: string; ownerAddress: string } };
@@ -17,3 +18,4 @@ export type Run = {
   confirmedAt: string | null;
 };
 export type RunWithItems = { run: Run; items: RunItem[] };
+export type NewRun = RunWithItems & { review: RunReview };

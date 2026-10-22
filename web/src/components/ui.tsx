@@ -69,3 +69,27 @@ export const inputClass =
 export function shortAddress(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
+
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <span className={`block animate-pulse rounded-md bg-line-soft ${className}`} aria-hidden="true" />;
+}
+
+export function CopyIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+export function Badge({ tone, children }: { tone: "brand" | "good" | "warn" | "bad" | "neutral"; children: React.ReactNode }) {
+  const tones = {
+    brand: "bg-brand-soft text-brand-dark",
+    good: "bg-good-soft text-good",
+    warn: "bg-warn-soft text-warn",
+    bad: "bg-bad-soft text-bad-text",
+    neutral: "bg-line-soft text-ink-2",
+  };
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+}

@@ -1,10 +1,24 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    // Keep the embedded Postgres (WASM) and pg driver out of the server bundle.
-    serverComponentsExternalPackages: ["@electric-sql/pglite", "pg"],
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          // Only Wagefold itself and the Safe app (for multisig treasuries) may frame the app.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self' https://app.safe.global" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+        ],
+      },
+    ];
   },
+  // Keep the embedded Postgres (WASM) and pg driver out of the server bundle.
+  serverExternalPackages: ["@electric-sql/pglite", "pg"],
   webpack: (config) => {
     // Optional peer deps pulled in by wallet SDKs that are not needed in the browser build.
     config.externals.push("pino-pretty", "lokijs", "encoding");

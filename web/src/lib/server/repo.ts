@@ -163,7 +163,7 @@ export async function createRunFromEmployees(
        values ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [id, i, e.id, e.name, e.role, e.wallet, e.amount, e.token],
     );
-    items.push({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token });
+    items.push({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token, employeeId: e.id });
   }
   return { run: toRun(rows[0]), items };
 }
@@ -175,11 +175,40 @@ export async function getRun(orgId: string, id: string): Promise<{ run: Run; ite
     id,
   ]);
   if (!rows[0]) return null;
-  const { rows: itemRows } = await db.query<RunItem>(
-    `select name, role, wallet, amount::text as amount, token from payroll_items where run_id = $1 order by position`,
-    [id],
+  return { run: toRun(rows[0]), items: await runItems(id) };
+}
+
+type ItemRow = Omit<RunItem, "employeeId"> & { employee_id: string | null };
+
+async function runItems(runId: string): Promise<RunItem[]> {
+  const db = await getDb();
+  const { rows } = await db.query<ItemRow>(
+    `select name, role, wallet, amount::text as amount, token, employee_id::text as employee_id
+     from payroll_items where run_id = $1 order by position`,
+    [runId],
   );
-  return { run: toRun(rows[0]), items: itemRows.map((r) => ({ ...r, amount: canonical(r.amount) })) };
+  return rows.map(({ employee_id, ...r }) => ({ ...r, amount: canonical(r.amount), employeeId: employee_id }));
+}
+
+/** Items of the most recent paid run, or null if this organization has never paid a run. */
+export async function lastPaidRunItems(orgId: string): Promise<RunItem[] | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string }>(
+    `select id from payroll_runs where org_id = $1 and status = 'confirmed' order by confirmed_at desc limit 1`,
+    [orgId],
+  );
+  return rows[0] ? runItems(rows[0].id) : null;
+}
+
+/** Every wallet this organization has successfully paid at least once. */
+export async function paidWallets(orgId: string): Promise<string[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ wallet: string }>(
+    `select distinct lower(i.wallet) as wallet from payroll_items i
+     join payroll_runs r on r.id = i.run_id where r.org_id = $1 and r.status = 'confirmed'`,
+    [orgId],
+  );
+  return rows.map((r) => r.wallet);
 }
 
 export async function listRuns(orgId: string): Promise<Run[]> {
