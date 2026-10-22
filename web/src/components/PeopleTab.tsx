@@ -186,7 +186,11 @@ export function PeopleTab() {
           <div className="flex flex-col items-center gap-3 px-5 py-12 text-center">
             <p className="text-base font-medium">No one here yet</p>
             <p className="max-w-md text-sm text-ink-2">Add each person&apos;s name, role, wallet address and monthly pay, or import a CSV.</p>
-            <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>
+            <p className="text-[13px] text-ink-2">
+              CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>
+            </p>
+            {/* Artifact pages can't start downloads, so the demo build only shows the format. */}
+            {!process.env.NEXT_PUBLIC_DEMO && <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>}
           </div>
         )}
       </Card>

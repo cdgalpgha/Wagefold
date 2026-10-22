@@ -37,7 +37,8 @@ type SupportedId = 8453 | 84532 | 31337;
 const CHAINS: Record<SupportedId, { chain: Chain; explorer?: string }> = {
   8453: { chain: base, explorer: "https://basescan.org" },
   84532: { chain: baseSepolia, explorer: "https://sepolia.basescan.org" },
-  31337: { chain: hardhat },
+  // The artifact demo runs a simulated chain under the local chain id; give it a clear name.
+  31337: { chain: process.env.NEXT_PUBLIC_DEMO ? { ...hardhat, name: "Demo network" } : hardhat },
 };
 
 function token(symbol: TokenSymbol, address: string | undefined): TokenConfig | undefined {

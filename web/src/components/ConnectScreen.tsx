@@ -11,6 +11,7 @@ const NOTES: Record<string, string> = {
   walletConnect: "Trust Wallet and other phone wallets, via QR code",
   safe: "Multisig. Open Wagefold from inside the Safe app",
   injected: "Browser extension",
+  testWallet: "Built into this demo. Holds test USDC and USDT, no real funds",
 };
 
 export function ConnectScreen() {
@@ -51,7 +52,7 @@ export function ConnectScreen() {
                 <WalletIcon connector={c} />
                 <span className="flex flex-1 flex-col gap-0.5">
                   <span className="text-base font-semibold">{c.id === "injected" ? "Browser wallet" : c.name}</span>
-                  <span className="text-[13px] text-ink-2">{NOTES[c.type] ?? NOTES[c.id] ?? NOTES.injected}</span>
+                  <span className="text-[13px] text-ink-2">{NOTES[c.id] ?? NOTES[c.type] ?? NOTES.injected}</span>
                 </span>
                 {pendingId === c.uid ? <Spinner className="text-brand" /> : <Chevron />}
               </button>

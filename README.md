@@ -34,6 +34,10 @@ Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/ei
 
 It has not had an external audit. Get one before handling real payroll.
 
+## Demo build (no server, no wallet needed)
+
+`cd web && npm run build:demo` produces one self-contained HTML file in `web/demo-dist/`. It runs the real UI with an in-browser backend (`src/demo/mock-api.ts`), a simulated chain that executes the same token and payroll rules as the contract (`src/demo/sim-chain.ts`), and a built-in test wallet with approval prompts. Nothing touches a real network. Each viewer's data stays in their own browser; "Reset demo" starts over.
+
 ## Run it locally
 
 Needs Node 20+.

@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "tsx scripts/e2e.ts"
+    "e2e": "tsx scripts/e2e.ts",
+    "build:demo": "vite build --config vite.demo.config.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
@@ -28,11 +29,14 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.6.1",
     "postcss": "^8.5.31",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.0.3",
     "vitest": "^2.1.9"
   }
 }
