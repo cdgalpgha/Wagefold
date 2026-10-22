@@ -7,6 +7,7 @@ import { canSave, saveFile, type SaveResult } from "@/lib/download";
 import { paymentsCsv, toCsv } from "@/lib/records";
 import { isPayDay, LAST_DAY, payDayIcs, payDayLabel } from "@/lib/schedule";
 import type { Employee, Me, Org, Records } from "@/lib/types";
+import { ThemeToggle } from "./ThemeToggle";
 import { useToast } from "./toast";
 import { Button, Card, Field, inputClass } from "./ui";
 
@@ -20,6 +21,14 @@ export function SettingsTab({ me }: { me: Me }) {
         <p className="mt-1 text-[15px] text-ink-2">Company details, your payday, and a copy of all your data.</p>
       </div>
       <CompanyForm key={`${me.org.name}-${me.org.payDay}`} org={me.org} />
+      <InvoiceForm key={`${me.org.legalName}-${me.org.address}-${me.org.taxId}-${me.org.invoicePrefix}-${me.org.invoiceNote}`} org={me.org} />
+      <Card className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
+        <div className="flex-1 basis-56">
+          <h2 className="text-base font-semibold">Appearance</h2>
+          <p className="mt-1 text-sm text-ink-2">System follows your device&apos;s light or dark setting.</p>
+        </div>
+        <ThemeToggle labels />
+      </Card>
       <DataExport org={me.org} />
     </div>
   );
@@ -95,13 +104,82 @@ function CompanyForm({ org }: { org: Org }) {
   );
 }
 
+function InvoiceForm({ org }: { org: Org }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const initial = {
+    legalName: org.legalName ?? "",
+    address: org.address ?? "",
+    taxId: org.taxId ?? "",
+    invoicePrefix: org.invoicePrefix,
+    invoiceNote: org.invoiceNote ?? "",
+  };
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some((k) => form[k].trim() !== initial[k]);
+  const set = (k: keyof typeof initial) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await api<{ org: Org }>("/api/me", { method: "PATCH", body: form });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      toast("Invoice details saved. They apply to invoices issued from now on.", { tone: "good" });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <form onSubmit={submit} className="flex flex-col gap-4" aria-labelledby="invoice-h">
+        <div>
+          <h2 id="invoice-h" className="text-base font-semibold">Invoice details</h2>
+          <p className="mt-1 text-sm text-ink-2">
+            Who invoices are billed to. Wagefold issues one per payment when a payroll is verified; changes here apply to invoices issued after you save.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Legal name" hint={`Leave empty to use “${org.name}”.`}>
+            <input className={inputClass} value={form.legalName} onChange={set("legalName")} maxLength={120} placeholder={org.name} />
+          </Field>
+          <Field label="Tax ID / VAT number">
+            <input className={inputClass} value={form.taxId} onChange={set("taxId")} maxLength={50} />
+          </Field>
+          <Field label="Billing address" className="sm:col-span-2">
+            <textarea className={`${inputClass} min-h-[84px] py-2`} value={form.address} onChange={set("address")} maxLength={300} rows={3} />
+          </Field>
+          <Field label="Invoice number prefix" hint={`Next invoices look like ${form.invoicePrefix || ""}0001.`}>
+            <input className={`${inputClass} font-mono`} value={form.invoicePrefix} onChange={set("invoicePrefix")} maxLength={12} />
+          </Field>
+          <Field label="Note on every invoice" hint="Optional, e.g. payment terms or a thank-you.">
+            <input className={inputClass} value={form.invoiceNote} onChange={set("invoiceNote")} maxLength={500} />
+          </Field>
+        </div>
+        {error && <p role="alert" className="text-sm text-bad-text">{error}</p>}
+        <div>
+          <Button type="submit" disabled={saving || !dirty}>Save invoice details</Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 function DataExport({ org }: { org: Org }) {
   const saved = useSaveToast();
   const people = useQuery({ queryKey: ["employees"], queryFn: () => api<{ employees: Employee[] }>("/api/employees").then((r) => r.employees) });
   const [busy, setBusy] = useState(false);
 
   async function exportPeople() {
-    const rows = [["name", "role", "wallet", "amount", "token"], ...(people.data ?? []).map((e) => [e.name, e.role, e.wallet, e.amount, e.token])];
+    const rows = [
+      ["name", "role", "wallet", "amount", "token", "email", "address", "tax_id"],
+      ...(people.data ?? []).map((e) => [e.name, e.role, e.wallet, e.amount, e.token, e.email, e.address, e.taxId]),
+    ];
     saved(await saveFile("wagefold-people.csv", toCsv(rows)), "People");
   }
 

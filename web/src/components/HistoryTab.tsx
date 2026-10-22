@@ -52,7 +52,7 @@ export function HistoryTab({ me }: { me: Me }) {
               role="tab"
               aria-selected={view === v}
               onClick={() => setView(v)}
-              className={`min-h-9 rounded-lg px-3.5 text-sm font-medium ${view === v ? "bg-white text-ink shadow-sm" : "text-ink-2 hover:text-ink"}`}
+              className={`min-h-9 rounded-lg px-3.5 text-sm font-medium ${view === v ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"}`}
             >
               {v === "runs" ? "Payroll runs" : "Activity"}
             </button>
@@ -90,7 +90,7 @@ function Runs({ me }: { me: Me }) {
                 type="button"
                 onClick={() => setOpen(expanded ? null : r.id)}
                 aria-expanded={expanded}
-                className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 text-left hover:bg-[#FAFBFC]"
+                className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-4 text-left hover:bg-surface-2"
               >
                 <span className="flex flex-1 basis-52 flex-col gap-0.5">
                   <span className="text-[15px] font-medium">
@@ -154,7 +154,7 @@ function Exports({ me, runs }: { me: Me; runs: Run[] }) {
         <h2 className="flex-1 text-base font-semibold">Records for your accountant</h2>
         <label className="flex items-center gap-2 text-sm text-ink-2">
           Year
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="min-h-10 rounded-lg border border-line-strong bg-white px-2 text-sm text-ink">
+          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="min-h-10 rounded-lg border border-line-strong bg-surface px-2 text-sm text-ink">
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -182,7 +182,7 @@ function RunDetails({ run, me, onPayslip }: { run: Run; me: Me; onPayslip: (posi
   const paid = run.status === "confirmed";
   const rates = run.usdRates ? Object.entries(run.usdRates) : [];
   return (
-    <div className="border-t border-line-soft bg-[#FAFBFC] px-5 py-3">
+    <div className="border-t border-line-soft bg-surface-2 px-5 py-3">
       {run.txHash && (
         <p className="flex flex-wrap items-center gap-2 pb-2 text-[13px] text-ink-2">
           Transaction
@@ -258,7 +258,7 @@ function PayslipDialog({ me, run, position, onClose }: { me: Me; run: Run; posit
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F1729]/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div
         ref={dialog}
         role="dialog"
@@ -266,7 +266,7 @@ function PayslipDialog({ me, run, position, onClose }: { me: Me; run: Run; posit
         aria-labelledby="payslip-h"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-6 shadow-xl outline-none sm:rounded-2xl"
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-surface p-6 shadow-xl outline-none sm:rounded-2xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -296,10 +296,17 @@ function PayslipDialog({ me, run, position, onClose }: { me: Me; run: Run; posit
               <Row k="Transaction" v={<span className="break-all font-mono text-[13px]">{slip.txHash ?? "—"}</span>} />
             </dl>
             <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
-              The transaction is the proof of payment. The downloaded payslip is a standalone page the person can keep, print to PDF or share with a lender.
+              The transaction is the proof of payment. The PDF is a branded payment statement the person can keep or share with a lender.
             </p>
             <div className="mt-5 flex flex-wrap gap-2.5">
-              <Button onClick={async () => saved(await saveFile(payslipFilename(slip), payslipHtml(slip)), "Payslip")}>Download payslip</Button>
+              <Button
+                onClick={async () => {
+                  const { payslipPdf } = await import("@/lib/pdf");
+                  saved(await saveFile(payslipFilename(slip).replace(/\.html$/, ".pdf"), await payslipPdf(slip)), "Payslip");
+                }}
+              >
+                Download PDF
+              </Button>
               {!process.env.NEXT_PUBLIC_DEMO && <Button variant="secondary" onClick={print}>Print or save as PDF</Button>}
             </div>
             <iframe ref={frame} title="Payslip for printing" className="hidden" sandbox="allow-same-origin allow-modals" />
@@ -319,7 +326,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-const TONE = { neutral: "bg-line-strong", warn: "bg-[#E8A33A]", good: "bg-good-dot", bad: "bg-bad" };
+const TONE = { neutral: "bg-line-strong", warn: "bg-warn-dot", good: "bg-good-dot", bad: "bg-bad" };
 
 function ActivityLog() {
   const activity = useQuery({ queryKey: ["activity"], queryFn: () => api<{ activity: Activity[] }>("/api/activity").then((r) => r.activity) });

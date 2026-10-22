@@ -10,11 +10,12 @@ import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS, type TokenSymbol } from 
 import { sumByToken } from "@/lib/money";
 import { personChanges } from "@/lib/activity";
 import { reviewRun } from "@/lib/changes";
+import { buildInvoice, DEFAULT_PREFIX, type Invoice } from "@/lib/invoices";
 import { PAR } from "@/lib/records";
 import { isPayDay } from "@/lib/schedule";
 import { buildPayments, onchainRef, samePayments, type RunItem } from "@/lib/payments";
 import type { Activity, ActivityAction, Employee, Org as PublicOrg, Run } from "@/lib/types";
-import { employeeInput, firstError } from "@/lib/validation";
+import { employeeInput, firstError, orgPatchInput } from "@/lib/validation";
 import { freshChain, SimChain, type ChainState } from "./sim-chain";
 import * as store from "./store";
 
@@ -22,6 +23,7 @@ type Org = PublicOrg;
 type AppState = {
   orgs: Org[];
   activity?: (Activity & { orgId: string })[];
+  invoices?: (Invoice & { orgId: string })[];
   employees: (Employee & { orgId: string })[];
   runs: (Run & { orgId: string })[];
   items: Record<string, RunItem[]>;
@@ -30,12 +32,13 @@ type AppState = {
 };
 type DemoState = { version: 1; chain: ChainState; app: AppState };
 
+const NO_BILLING = { email: "", address: "", taxId: "" };
 const SAMPLE_TEAM: Omit<Employee, "id">[] = [
-  { name: "Priya Nair", role: "Head of Finance", wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", amount: "9400", token: "USDC" },
-  { name: "Maya Chen", role: "Senior Engineer", wallet: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", amount: "12500", token: "USDC" },
-  { name: "Tunde Bakare", role: "Backend Engineer", wallet: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", amount: "9000", token: "USDC" },
-  { name: "Lucía Gómez", role: "Product Designer", wallet: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", amount: "6900", token: "USDT" },
-  { name: "Aisha Rahman", role: "Growth Marketer", wallet: "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", amount: "5600", token: "USDT" },
+  { name: "Priya Nair", role: "Head of Finance", wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", amount: "9400", token: "USDC", ...NO_BILLING },
+  { name: "Maya Chen", role: "Senior Engineer", wallet: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", amount: "12500", token: "USDC", ...NO_BILLING },
+  { name: "Tunde Bakare", role: "Backend Engineer", wallet: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", amount: "9000", token: "USDC", ...NO_BILLING },
+  { name: "Lucía Gómez", role: "Product Designer", wallet: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", amount: "6900", token: "USDT", ...NO_BILLING },
+  { name: "Aisha Rahman", role: "Growth Marketer", wallet: "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", amount: "5600", token: "USDT", ...NO_BILLING },
 ];
 
 const fresh = (): DemoState => ({
@@ -68,7 +71,8 @@ const need = <T>(v: T | null | undefined, status: number, message: string): T =>
 };
 const session = () => need(state.app.session, 401, "Sign in with your wallet to continue.");
 const publicRun = ({ orgId: _o, ...run }: Run & { orgId: string }): Run => run;
-const publicEmployee = ({ orgId: _o, ...e }: Employee & { orgId: string }): Employee => e;
+// Older saved demos have people without invoice details; fill the blanks.
+const publicEmployee = ({ orgId: _o, ...e }: Employee & { orgId: string }): Employee => ({ ...NO_BILLING, ...e });
 
 function log(orgId: string, actor: string, action: ActivityAction, detail: Record<string, unknown> = {}) {
   state.app.activity ??= [];
@@ -108,12 +112,28 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     const address = getAddress(fields.address);
     let org = state.app.orgs.find((o) => o.ownerAddress.toLowerCase() === address.toLowerCase());
     if (!org) {
-      org = { id: uuid(), ownerAddress: address, name: "Northwind Labs", payDay: 31 };
+      org = {
+        id: uuid(),
+        ownerAddress: address,
+        name: "Northwind Labs",
+        payDay: 31,
+        legalName: "Northwind Labs Ltd",
+        address: "14 Harbour Street\nLondon EC2A 4NE\nUnited Kingdom",
+        taxId: "GB 123 4567 89",
+        invoicePrefix: "NW-",
+        invoiceNote: null,
+      };
       state.app.orgs.push(org);
       // Example team so the demo opens in a working state. Edit or remove them freely.
       for (const e of SAMPLE_TEAM) state.app.employees.push({ ...e, id: uuid(), orgId: org.id });
     }
+    // Orgs saved by an older demo version lack the newer fields.
     org.payDay ??= null;
+    org.invoicePrefix ??= DEFAULT_PREFIX;
+    org.legalName ??= null;
+    org.address ??= null;
+    org.taxId ??= null;
+    org.invoiceNote ??= null;
     state.app.session = { address, orgId: org.id, chainId: fields.chainId! };
     state.app.nonce = null;
     log(org.id, address, "signed_in", { chainId: fields.chainId });
@@ -132,19 +152,13 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
   if (path === "/api/me") {
     const org = need(state.app.orgs.find((o) => o.id === s.orgId), 404, "Organization not found.");
     if (method === "PATCH") {
-      const { name, payDay, ...rest } = (body ?? {}) as { name?: unknown; payDay?: unknown };
-      if (Object.keys(rest).length) throw new HttpError(400, "Invalid settings.");
+      const parsed = orgPatchInput.safeParse(body);
+      if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid settings.");
       const changes: Record<string, [string, string]> = {};
-      if (name !== undefined) {
-        const n = typeof name === "string" ? name.trim() : "";
-        if (!n || n.length > 80) throw new HttpError(400, "Company name must be 1 to 80 characters.");
-        if (n !== org.name) changes.name = [org.name, n];
-        org.name = n;
-      }
-      if (payDay !== undefined) {
-        if (payDay !== null && !isPayDay(payDay)) throw new HttpError(400, "Payday must be a day from 1 to 28, or the last day of the month.");
-        if (payDay !== org.payDay) changes.payDay = [String(org.payDay ?? ""), String(payDay ?? "")];
-        org.payDay = payDay as number | null;
+      for (const [k, raw] of Object.entries(parsed.data) as [keyof typeof parsed.data, string | number | null][]) {
+        const value = (k === "name" || k === "payDay" || k === "invoicePrefix" ? raw : raw === "" ? null : raw) as never;
+        if (org[k] !== value) changes[k] = [String(org[k] ?? ""), String(value ?? "")];
+        org[k] = value;
       }
       if (Object.keys(changes).length) log(s.orgId, s.address, "company_updated", { changes });
       persist();
@@ -156,6 +170,13 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
   if (path === "/api/activity") {
     const list = (state.app.activity ?? []).filter((a) => a.orgId === s.orgId).slice(-200).reverse();
     return [200, { activity: list.map(({ orgId: _o, ...a }) => a) }];
+  }
+
+  if (path === "/api/invoices") {
+    issueInvoices(s.orgId);
+    persist();
+    const list = (state.app.invoices ?? []).filter((v) => v.orgId === s.orgId).sort((a, b) => b.number - a.number);
+    return [200, { invoices: list.map(({ orgId: _o, ...v }) => v) }];
   }
 
   if (path === "/api/records") {
@@ -288,6 +309,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
           });
         }
         log(s.orgId, s.address, status === "confirmed" ? "run_paid" : "run_failed", { runId: run.id, txHash: run.txHash, ...(reason ? { reason } : {}) });
+        if (status === "confirmed") issueInvoices(s.orgId);
         persist();
         return [200, { run: publicRun(run) }] as [number, unknown];
       };
@@ -306,6 +328,28 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
   }
 
   throw new HttpError(404, "Not found.");
+}
+
+/** Same rule as the server: one invoice per paid payment, numbered in order, never edited after issue. */
+function issueInvoices(orgId: string) {
+  const org = state.app.orgs.find((o) => o.id === orgId);
+  if (!org) return;
+  state.app.invoices ??= [];
+  const mine = state.app.invoices.filter((v) => v.orgId === orgId);
+  const have = new Set(mine.map((v) => `${v.runId}:${v.position}`));
+  let next = mine.reduce((n, v) => Math.max(n, v.number), 0) + 1;
+  const paid = state.app.runs
+    .filter((r) => r.orgId === orgId && r.status === "confirmed")
+    .sort((a, b) => (a.paidAt ?? "").localeCompare(b.paidAt ?? ""));
+  for (const run of paid) {
+    (state.app.items[run.id] ?? []).forEach((item, position) => {
+      if (have.has(`${run.id}:${position}`)) return;
+      const person = state.app.employees.find((e) => e.id === item.employeeId);
+      const data = buildInvoice(org, run, item, person, next);
+      state.app.invoices!.push({ id: uuid(), orgId, number: next, runId: run.id, position, issuedAt: data.issuedAt, data });
+      next++;
+    });
+  }
 }
 
 /** Routes the app's `/api/*` fetches to the in-browser backend. Everything else goes to the network. */

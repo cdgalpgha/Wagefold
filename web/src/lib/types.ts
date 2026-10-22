@@ -2,9 +2,31 @@ import type { TokenSymbol } from "./chains";
 import type { RunReview } from "./changes";
 import type { RunItem } from "./payments";
 
-export type Org = { id: string; name: string; ownerAddress: string; payDay: number | null };
+export type Org = {
+  id: string;
+  name: string;
+  ownerAddress: string;
+  payDay: number | null;
+  /** Invoice details: who invoices are billed to, and how they're numbered. */
+  legalName: string | null;
+  address: string | null;
+  taxId: string | null;
+  invoicePrefix: string;
+  invoiceNote: string | null;
+};
 export type Me = { address: string; chainId: number; org: Org };
-export type Employee = { id: string; name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+export type Employee = {
+  id: string;
+  name: string;
+  role: string;
+  wallet: string;
+  amount: string;
+  token: TokenSymbol;
+  /** Optional, printed on their invoices. */
+  email: string;
+  address: string;
+  taxId: string;
+};
 export type RunStatus = "draft" | "submitted" | "confirmed" | "failed";
 export type Run = {
   id: string;

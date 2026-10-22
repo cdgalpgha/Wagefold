@@ -7,10 +7,10 @@ import { saveFile as browserSave, type SaveResult } from "../lib/download";
 
 export type { SaveResult };
 
-type Downloads = { save(req: { filename: string; data: string }): Promise<{ status: string }> };
+type Downloads = { save(req: { filename: string; data: string | Uint8Array }): Promise<{ status: string }> };
 type Host = { use(name: "downloads"): Promise<Downloads | null> };
 
-const ALLOWED = ["csv", "html", "txt", "json"];
+const ALLOWED = ["csv", "html", "txt", "json", "pdf"];
 
 const host = () => (typeof window !== "undefined" ? (window as unknown as { claude?: Host }).claude : undefined);
 
@@ -19,7 +19,7 @@ export function canSave(filename: string): boolean {
   return ALLOWED.includes(filename.split(".").pop() ?? "");
 }
 
-export async function saveFile(filename: string, data: string): Promise<SaveResult> {
+export async function saveFile(filename: string, data: string | Uint8Array): Promise<SaveResult> {
   const claude = host();
   if (!claude) return browserSave(filename, data);
   const downloads = await claude.use("downloads").catch(() => null);

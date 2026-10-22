@@ -14,8 +14,9 @@ import { parseEmployeesCsv } from "@/lib/validation";
 import { copyText, useToast } from "./toast";
 import { Button, Card, CopyIcon, Field, inputClass, shortAddress, Skeleton } from "./ui";
 
-const TONES = ["#DCE4FD", "#E3F1E8", "#FBE9D7", "#EEE3FA", "#E0F0F4", "#F8E1E7"];
-type Draft = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+// Avatar backgrounds; each is a theme token so they stay soft in light and dark mode.
+const TONES = ["bg-tone-1", "bg-tone-2", "bg-tone-3", "bg-tone-4", "bg-tone-5", "bg-tone-6"];
+type Draft = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol; email: string; address: string; taxId: string };
 
 export function useEmployees() {
   return useQuery({ queryKey: ["employees"], queryFn: () => api<{ employees: Employee[] }>("/api/employees").then((r) => r.employees) });
@@ -92,7 +93,13 @@ export function PeopleTab() {
   }
 
   function downloadTemplate() {
-    void saveFile("wagefold-people-template.csv", toCsv([["name", "role", "wallet", "amount", "token"], ["Ada Lovelace", "Engineer", "0x0000000000000000000000000000000000000001", "5000", "USDC"]]));
+    void saveFile(
+      "wagefold-people-template.csv",
+      toCsv([
+        ["name", "role", "wallet", "amount", "token", "email", "address", "tax_id"],
+        ["Ada Lovelace", "Engineer", "0x0000000000000000000000000000000000000001", "5000", "USDC", "ada@example.com", "12 Example Road, London", ""],
+      ]),
+    );
   }
 
   const actions = (e: Employee) => (
@@ -213,7 +220,7 @@ export function PeopleTab() {
         <div className="hidden overflow-x-auto sm:block">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-[#FAFBFC] text-left text-xs font-medium text-ink-3">
+              <tr className="bg-surface-2 text-left text-xs font-medium text-ink-3">
                 <th scope="col" className="border-b border-line px-5 py-3 font-medium">Name</th>
                 <th scope="col" className="border-b border-line px-5 py-3 font-medium">Role</th>
                 <th scope="col" className="border-b border-line px-5 py-3 font-medium">Wallet address</th>
@@ -223,7 +230,7 @@ export function PeopleTab() {
             </thead>
             <tbody>
               {list.map(({ e, tone }) => (
-                <tr key={e.id} className="text-sm hover:bg-[#FAFBFC]">
+                <tr key={e.id} className="text-sm hover:bg-surface-2">
                   <td className="whitespace-nowrap border-b border-line-soft px-5 py-3">
                     <span className="flex items-center gap-3">
                       <Avatar name={e.name} tone={tone} />
@@ -260,7 +267,7 @@ export function PeopleTab() {
             <p className="text-base font-medium">No one here yet</p>
             <p className="max-w-md text-sm text-ink-2">Add each person&apos;s name, role, wallet address and monthly pay, or import a CSV.</p>
             <p className="text-[13px] text-ink-2">
-              CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>
+              CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>, plus optional <span className="font-mono">email, address, tax_id</span>
             </p>
             {/* Artifact pages can't start downloads, so the demo build only shows the format. */}
             <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>
@@ -273,7 +280,7 @@ export function PeopleTab() {
 
 function Avatar({ name, tone }: { name: string; tone: string }) {
   return (
-    <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-xs font-semibold" style={{ background: tone }} aria-hidden="true">
+    <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-full text-xs font-semibold ${tone}`} aria-hidden="true">
       {initials(name)}
     </span>
   );
@@ -294,11 +301,12 @@ function EmployeeForm({
 }) {
   const [draft, setDraft] = useState<Draft>(
     initial
-      ? { name: initial.name, role: initial.role, wallet: initial.wallet, amount: initial.amount, token: initial.token }
-      : { name: "", role: "", wallet: "", amount: "", token: tokens[0] ?? "USDC" },
+      ? { name: initial.name, role: initial.role, wallet: initial.wallet, amount: initial.amount, token: initial.token, email: initial.email, address: initial.address, taxId: initial.taxId }
+      : { name: "", role: "", wallet: "", amount: "", token: tokens[0] ?? "USDC", email: "", address: "", taxId: "" },
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(!!(initial?.email || initial?.address || initial?.taxId));
   const set = (k: keyof Draft) => (e: { target: { value: string } }) => {
     setDraft((d) => ({ ...d, [k]: e.target.value }));
     setError(null);
@@ -347,8 +355,32 @@ function EmployeeForm({
             <input className={`${inputClass} font-mono text-sm`} value={draft.wallet} onChange={set("wallet")} placeholder="0x…" spellCheck={false} autoComplete="off" required />
           </Field>
         </div>
+        <div>
+          <button
+            type="button"
+            aria-expanded={billingOpen}
+            onClick={() => setBillingOpen((o) => !o)}
+            className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-brand"
+          >
+            <svg className={`h-4 w-4 transition-transform ${billingOpen ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+            Invoice details (optional)
+          </button>
+          {billingOpen && (
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Email">
+                <input className={inputClass} type="email" value={draft.email} onChange={set("email")} autoComplete="off" maxLength={200} />
+              </Field>
+              <Field label="Tax ID">
+                <input className={inputClass} value={draft.taxId} onChange={set("taxId")} autoComplete="off" maxLength={50} />
+              </Field>
+              <Field label="Address" className="sm:col-span-2" hint="Printed on their invoices.">
+                <textarea className={`${inputClass} min-h-[72px] py-2`} value={draft.address} onChange={set("address")} rows={2} maxLength={300} />
+              </Field>
+            </div>
+          )}
+        </div>
         {lookalike && (
-          <div role="alert" className="rounded-xl border border-[#F1C4BF] bg-bad-soft px-4 py-3 text-sm text-bad-text">
+          <div role="alert" className="rounded-xl border border-bad-line bg-bad-soft px-4 py-3 text-sm text-bad-text">
             <p className="font-semibold">This address looks like {lookalike.resemblesName}&apos;s wallet, but it&apos;s a different address.</p>
             <p className="mt-1">
               <span className="font-mono">{shortAddress(lookalike.wallet)}</span> vs <span className="font-mono">{shortAddress(lookalike.resembles)}</span>. Scammers

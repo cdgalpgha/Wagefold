@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { employeeInput, parseEmployeesCsv } from "@/lib/validation";
+import { orgPatchInput, employeeInput, parseEmployeesCsv } from "@/lib/validation";
 
 const wallet = "0xdc582558deb4e0ee768ba37968af85af7b0639a8";
 
@@ -12,7 +12,18 @@ describe("employeeInput", () => {
       wallet: "0xDC582558dEb4E0Ee768bA37968Af85af7b0639a8", // EIP-55 checksummed
       amount: "9400",
       token: "USDC",
+      email: "",
+      address: "",
+      taxId: "",
     });
+  });
+
+  it("accepts optional invoice details and rejects a malformed email", () => {
+    const base = { name: "A", wallet, amount: "1", token: "USDC" };
+    expect(employeeInput.parse({ ...base, email: " a@b.co ", address: "1 Road\nTown", taxId: " X1 " })).toMatchObject({ email: "a@b.co", address: "1 Road\nTown", taxId: "X1" });
+    expect(employeeInput.safeParse({ ...base, email: "not-an-email" }).success).toBe(false);
+    expect(employeeInput.safeParse({ ...base, email: "<a@b.co>" }).success).toBe(false);
+    expect(employeeInput.safeParse({ ...base, taxId: "x".repeat(51) }).success).toBe(false);
   });
 
   it("rejects bad wallets, the zero address, bad amounts and unknown tokens", () => {
@@ -46,5 +57,23 @@ describe("parseEmployeesCsv", () => {
   it("reports missing columns", () => {
     expect(parseEmployeesCsv("name,role\nA,B").error).toBe("Missing columns: wallet, amount.");
     expect(parseEmployeesCsv("").error).toBe("The file is empty.");
+  });
+});
+
+describe("orgPatchInput", () => {
+  it("accepts invoice settings and rejects unknown fields and bad prefixes", () => {
+    expect(orgPatchInput.parse({ legalName: " Acme Ltd ", invoicePrefix: "AC-2026/" })).toEqual({ legalName: "Acme Ltd", invoicePrefix: "AC-2026/" });
+    expect(orgPatchInput.safeParse({ invoicePrefix: "<script>" }).success).toBe(false);
+    expect(orgPatchInput.safeParse({ invoicePrefix: "x".repeat(13) }).success).toBe(false);
+    expect(orgPatchInput.safeParse({ ownerAddress: "0x1" }).success).toBe(false);
+  });
+});
+
+describe("addresses", () => {
+  it("allow up to 6 lines so invoices stay on one page", () => {
+    const base = { name: "A", wallet: "0xdc582558deb4e0ee768ba37968af85af7b0639a8", amount: "1", token: "USDC" };
+    expect(employeeInput.safeParse({ ...base, address: "1\n2\n3\n4\n5\n6" }).success).toBe(true);
+    expect(employeeInput.safeParse({ ...base, address: "1\n2\n3\n4\n5\n6\n7" }).success).toBe(false);
+    expect(orgPatchInput.safeParse({ address: "a\n".repeat(50) + "x" }).success).toBe(false);
   });
 });

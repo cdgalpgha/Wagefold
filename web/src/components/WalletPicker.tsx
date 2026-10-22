@@ -38,14 +38,14 @@ export function WalletPicker({ open, onClose }: { open: boolean; onClose: () => 
   const pendingId = isPending ? (variables?.connector as Connector | undefined)?.uid : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-4 sm:items-center" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night/50 p-4 sm:items-center" onClick={onClose} role="presentation">
       <div
         ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby="picker-title"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-[20px] bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-[20px] bg-surface p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -64,7 +64,7 @@ export function WalletPicker({ open, onClose }: { open: boolean; onClose: () => 
               type="button"
               onClick={() => connect({ connector: c })}
               disabled={isPending}
-              className="flex min-h-16 items-center gap-3.5 rounded-2xl border border-line bg-white px-4 py-2.5 text-left transition-colors hover:border-brand/40 hover:bg-brand-soft/40 disabled:opacity-60"
+              className="flex min-h-16 items-center gap-3.5 rounded-2xl border border-line bg-surface px-4 py-2.5 text-left transition-colors hover:border-brand/40 hover:bg-brand-soft/40 disabled:opacity-60"
             >
               <WalletIcon connector={c} />
               <span className="flex flex-1 flex-col gap-0.5">
@@ -95,7 +95,7 @@ function WalletIcon({ connector }: { connector: Connector }) {
   }
   const letter = connector.id === "injected" ? "B" : connector.name.charAt(0);
   return (
-    <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-ink text-base font-bold text-white" aria-hidden="true">
+    <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-night text-base font-bold text-white" aria-hidden="true">
       {letter}
     </span>
   );

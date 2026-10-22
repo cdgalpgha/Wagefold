@@ -79,10 +79,38 @@ create index if not exists audit_events_org on audit_events (org_id, id desc);
 create or replace function audit_events_append_only() returns trigger language plpgsql as $$
 begin
   if tg_op = 'DELETE' and pg_trigger_depth() > 1 then return old; end if;
-  raise exception 'audit_events is append-only';
+  raise exception '% is append-only', tg_table_name;
 end $$;
 drop trigger if exists audit_events_append_only on audit_events;
 create trigger audit_events_append_only before update or delete on audit_events
+  for each row execute function audit_events_append_only();
+
+-- Invoice details. Optional: invoices fall back to the company name and leave blanks out.
+alter table organizations add column if not exists legal_name text;
+alter table organizations add column if not exists address text;
+alter table organizations add column if not exists tax_id text;
+alter table organizations add column if not exists invoice_prefix text not null default 'INV-';
+alter table organizations add column if not exists invoice_note text;
+alter table employees add column if not exists email text not null default '';
+alter table employees add column if not exists address text not null default '';
+alter table employees add column if not exists tax_id text not null default '';
+
+-- One invoice per paid payment, numbered in order per company. Issued invoices never change:
+-- the data column is a snapshot, and the trigger below rejects edits (company deletion still cascades).
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizations(id) on delete cascade,
+  number integer not null,
+  run_id uuid not null references payroll_runs(id) on delete cascade,
+  position integer not null,
+  issued_at timestamptz not null,
+  data jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (org_id, number),
+  unique (run_id, position)
+);
+drop trigger if exists invoices_immutable on invoices;
+create trigger invoices_immutable before update or delete on invoices
   for each row execute function audit_events_append_only();
 `;
 

@@ -9,18 +9,21 @@ import { getChainConfig } from "@/lib/chains";
 import { formatAmount } from "@/lib/money";
 import type { Me } from "@/lib/types";
 import { HistoryTab } from "./HistoryTab";
+import { InvoicesTab } from "./InvoicesTab";
 import { Logo } from "./Logo";
 import { NetworkSwitcher } from "./NetworkSwitcher";
 import { PayTab } from "./PayTab";
 import { PeopleTab } from "./PeopleTab";
 import { SettingsTab } from "./SettingsTab";
+import { ThemeToggle } from "./ThemeToggle";
 import { shortAddress } from "./ui";
 
-type Tab = "pay" | "people" | "history" | "settings";
+type Tab = "pay" | "people" | "history" | "invoices" | "settings";
 const TABS: { id: Tab; label: string }[] = [
   { id: "pay", label: "Pay" },
   { id: "people", label: "People" },
   { id: "history", label: "History" },
+  { id: "invoices", label: "Invoices" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -40,17 +43,17 @@ export function Dashboard({ me }: { me: Me }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-line bg-white">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
           <Logo className="h-7" />
-          <nav aria-label="Main" className="order-last flex w-full gap-1 sm:order-none sm:w-auto sm:flex-1">
+          <nav aria-label="Main" className="order-last -mx-1 flex w-[calc(100%+0.5rem)] gap-1 overflow-x-auto px-1 sm:order-none sm:mx-0 sm:w-auto sm:flex-1 sm:px-0">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? "page" : undefined}
-                className={`min-h-10 rounded-lg px-3.5 text-[15px] font-medium ${
+                className={`min-h-10 flex-none rounded-lg px-3 text-[15px] font-medium sm:px-3.5 ${
                   tab === t.id ? "bg-brand-soft text-brand-dark" : "text-ink-2 hover:bg-line-soft hover:text-ink"
                 }`}
               >
@@ -58,8 +61,9 @@ export function Dashboard({ me }: { me: Me }) {
               </button>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3 rounded-full border border-line py-1.5 pl-3.5 pr-1.5">
-            <span className={`h-2 w-2 rounded-full ${cfg ? "bg-good-dot" : "bg-[#E8A33A]"}`} aria-hidden="true" />
+          <ThemeToggle className="ml-auto hidden min-[1400px]:inline-flex" />
+          <div className="ml-auto flex items-center gap-3 rounded-full border border-line py-1.5 pl-3.5 pr-1.5 min-[1400px]:ml-0">
+            <span className={`h-2 w-2 rounded-full ${cfg ? "bg-good-dot" : "bg-warn-dot"}`} aria-hidden="true" />
             <span className="flex flex-col">
               <span className="text-[13px] font-semibold">
                 {connector?.name ?? "Wallet"} · <span className="font-mono font-medium">{shortAddress(me.address)}</span>
@@ -88,6 +92,8 @@ export function Dashboard({ me }: { me: Me }) {
           <PeopleTab />
         ) : tab === "history" ? (
           <HistoryTab me={me} />
+        ) : tab === "invoices" ? (
+          <InvoicesTab onOpenSettings={() => setTab("settings")} />
         ) : (
           <SettingsTab me={me} />
         )}

@@ -25,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex flex-col items-center gap-2 px-4 pb-[max(16px,env(safe-area-inset-bottom))]">
         {toasts.map((t) => (
-          <div key={t.id} className="pointer-events-auto flex max-w-md items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-white shadow-lg">
+          <div key={t.id} className="pointer-events-auto flex max-w-md items-center gap-3 rounded-xl bg-night px-4 py-3 text-sm text-white shadow-lg">
             {t.tone !== "neutral" && <span className={`h-2 w-2 flex-none rounded-full ${t.tone === "good" ? "bg-good-dot" : "bg-[#F97066]"}`} aria-hidden="true" />}
             <span className="flex-1">{t.message}</span>
             {t.action && (

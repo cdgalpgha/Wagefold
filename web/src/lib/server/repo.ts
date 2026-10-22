@@ -1,14 +1,35 @@
 import "server-only";
 import { formatEther } from "viem";
 import type { TokenSymbol } from "../chains";
+import { buildInvoice, type Invoice, type InvoiceData } from "../invoices";
 import type { Known } from "../lookalike";
 import { canonical } from "../money";
 import { onchainRef, type RunItem } from "../payments";
 import type { EmployeeInput } from "../validation";
 import { getDb } from "./db";
 
-export type Organization = { id: string; ownerAddress: string; name: string; payDay: number | null };
-export type Employee = { id: string; name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+export type Organization = {
+  id: string;
+  ownerAddress: string;
+  name: string;
+  payDay: number | null;
+  legalName: string | null;
+  address: string | null;
+  taxId: string | null;
+  invoicePrefix: string;
+  invoiceNote: string | null;
+};
+export type Employee = {
+  id: string;
+  name: string;
+  role: string;
+  wallet: string;
+  amount: string;
+  token: TokenSymbol;
+  email: string;
+  address: string;
+  taxId: string;
+};
 export type RunStatus = "draft" | "submitted" | "confirmed" | "failed";
 export type Run = {
   id: string;
@@ -33,7 +54,8 @@ export type RunRecord = {
   usdRates: Partial<Record<TokenSymbol, { rate: string; source: string }>>;
 };
 
-type EmployeeRow = { id: string; name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+type EmployeeRow = Omit<Employee, "taxId"> & { tax_id: string };
+const EMPLOYEE_COLUMNS = `id, name, role, wallet, amount::text as amount, token, email, address, tax_id`;
 type RunRow = {
   id: string;
   chain_id: number;
@@ -53,7 +75,7 @@ type RunRow = {
 
 const iso = (d: Date | string | null) => (d === null ? null : new Date(d).toISOString());
 
-const toEmployee = (r: EmployeeRow): Employee => ({ ...r, amount: canonical(r.amount) });
+const toEmployee = ({ tax_id, ...r }: EmployeeRow): Employee => ({ ...r, taxId: tax_id, amount: canonical(r.amount) });
 const toRun = (r: RunRow): Run => ({
   id: r.id,
   chainId: r.chain_id,
@@ -79,9 +101,29 @@ function isUniqueViolation(err: unknown) {
 
 // Organizations ----------------------------------------------------------------------------------
 
-type OrgRow = { id: string; owner_address: string; name: string; pay_day: number | null };
-const ORG_COLUMNS = `id, owner_address, name, pay_day`;
-const toOrg = (r: OrgRow): Organization => ({ id: r.id, ownerAddress: r.owner_address, name: r.name, payDay: r.pay_day });
+type OrgRow = {
+  id: string;
+  owner_address: string;
+  name: string;
+  pay_day: number | null;
+  legal_name: string | null;
+  address: string | null;
+  tax_id: string | null;
+  invoice_prefix: string;
+  invoice_note: string | null;
+};
+const ORG_COLUMNS = `id, owner_address, name, pay_day, legal_name, address, tax_id, invoice_prefix, invoice_note`;
+const toOrg = (r: OrgRow): Organization => ({
+  id: r.id,
+  ownerAddress: r.owner_address,
+  name: r.name,
+  payDay: r.pay_day,
+  legalName: r.legal_name,
+  address: r.address,
+  taxId: r.tax_id,
+  invoicePrefix: r.invoice_prefix,
+  invoiceNote: r.invoice_note,
+});
 
 export async function upsertOrganization(ownerAddress: string): Promise<Organization> {
   const db = await getDb();
@@ -100,17 +142,41 @@ export async function getOrganization(orgId: string): Promise<Organization | nul
   return rows[0] ? toOrg(rows[0]) : null;
 }
 
-export async function updateOrganization(
-  orgId: string,
-  patch: { name?: string; payDay?: number | null },
-): Promise<Organization | null> {
+export type OrgPatch = {
+  name?: string;
+  payDay?: number | null;
+  legalName?: string;
+  address?: string;
+  taxId?: string;
+  invoicePrefix?: string;
+  invoiceNote?: string;
+};
+
+export async function updateOrganization(orgId: string, patch: OrgPatch): Promise<Organization | null> {
   const db = await getDb();
+  // Only fields present in the patch change; empty strings clear optional text.
+  const text = (v: string | undefined) => (v === undefined ? null : v);
   const { rows } = await db.query<OrgRow>(
     `update organizations set
        name = coalesce($2, name),
-       pay_day = case when $3::boolean then $4::smallint else pay_day end
+       pay_day = case when $3::boolean then $4::smallint else pay_day end,
+       legal_name = case when $5::text is null then legal_name else nullif($5, '') end,
+       address = case when $6::text is null then address else nullif($6, '') end,
+       tax_id = case when $7::text is null then tax_id else nullif($7, '') end,
+       invoice_prefix = coalesce($8, invoice_prefix),
+       invoice_note = case when $9::text is null then invoice_note else nullif($9, '') end
      where id = $1 returning ${ORG_COLUMNS}`,
-    [orgId, patch.name ?? null, patch.payDay !== undefined, patch.payDay ?? null],
+    [
+      orgId,
+      patch.name ?? null,
+      patch.payDay !== undefined,
+      patch.payDay ?? null,
+      text(patch.legalName),
+      text(patch.address),
+      text(patch.taxId),
+      patch.invoicePrefix ?? null,
+      text(patch.invoiceNote),
+    ],
   );
   return rows[0] ? toOrg(rows[0]) : null;
 }
@@ -120,8 +186,7 @@ export async function updateOrganization(
 export async function listEmployees(orgId: string): Promise<Employee[]> {
   const db = await getDb();
   const { rows } = await db.query<EmployeeRow>(
-    `select id, name, role, wallet, amount::text as amount, token from employees
-     where org_id = $1 order by created_at, name`,
+    `select ${EMPLOYEE_COLUMNS} from employees where org_id = $1 order by created_at, name`,
     [orgId],
   );
   return rows.map(toEmployee);
@@ -131,9 +196,9 @@ export async function createEmployee(orgId: string, input: EmployeeInput): Promi
   const db = await getDb();
   try {
     const { rows } = await db.query<EmployeeRow>(
-      `insert into employees (org_id, name, role, wallet, amount, token) values ($1, $2, $3, $4, $5, $6)
-       returning id, name, role, wallet, amount::text as amount, token`,
-      [orgId, input.name, input.role, input.wallet, input.amount, input.token],
+      `insert into employees (org_id, name, role, wallet, amount, token, email, address, tax_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning ${EMPLOYEE_COLUMNS}`,
+      [orgId, input.name, input.role, input.wallet, input.amount, input.token, input.email, input.address, input.taxId],
     );
     return toEmployee(rows[0]);
   } catch (err) {
@@ -146,10 +211,10 @@ export async function updateEmployee(orgId: string, id: string, input: EmployeeI
   const db = await getDb();
   try {
     const { rows } = await db.query<EmployeeRow>(
-      `update employees set name = $3, role = $4, wallet = $5, amount = $6, token = $7, updated_at = now()
-       where org_id = $1 and id = $2
-       returning id, name, role, wallet, amount::text as amount, token`,
-      [orgId, id, input.name, input.role, input.wallet, input.amount, input.token],
+      `update employees set name = $3, role = $4, wallet = $5, amount = $6, token = $7,
+         email = $8, address = $9, tax_id = $10, updated_at = now()
+       where org_id = $1 and id = $2 returning ${EMPLOYEE_COLUMNS}`,
+      [orgId, id, input.name, input.role, input.wallet, input.amount, input.token, input.email, input.address, input.taxId],
     );
     return rows[0] ? toEmployee(rows[0]) : null;
   } catch (err) {
@@ -161,7 +226,7 @@ export async function updateEmployee(orgId: string, id: string, input: EmployeeI
 export async function getEmployee(orgId: string, id: string): Promise<Employee | null> {
   const db = await getDb();
   const { rows } = await db.query<EmployeeRow>(
-    `select id, name, role, wallet, amount::text as amount, token from employees where org_id = $1 and id = $2`,
+    `select ${EMPLOYEE_COLUMNS} from employees where org_id = $1 and id = $2`,
     [orgId, id],
   );
   return rows[0] ? toEmployee(rows[0]) : null;
@@ -170,7 +235,7 @@ export async function getEmployee(orgId: string, id: string): Promise<Employee |
 export async function deleteEmployee(orgId: string, id: string): Promise<Employee | null> {
   const db = await getDb();
   const { rows } = await db.query<EmployeeRow>(
-    `delete from employees where org_id = $1 and id = $2 returning id, name, role, wallet, amount::text as amount, token`,
+    `delete from employees where org_id = $1 and id = $2 returning ${EMPLOYEE_COLUMNS}`,
     [orgId, id],
   );
   return rows[0] ? toEmployee(rows[0]) : null;
@@ -340,4 +405,69 @@ export async function listActivity(orgId: string, limit = 200): Promise<Activity
     [orgId, limit],
   );
   return rows.map((r) => ({ ...r, at: iso(r.at)!, detail: typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail }));
+}
+
+// Invoices ---------------------------------------------------------------------------------------
+
+/**
+ * Issues an invoice for every payment in a paid run that doesn't have one yet, oldest first, with
+ * the next numbers in sequence. Safe to call repeatedly: if two calls race, the unique constraints
+ * stop duplicates and the loser stops early (the winner issues the rest).
+ */
+export async function ensureInvoices(orgId: string): Promise<void> {
+  const db = await getDb();
+  const { rows: missing } = await db.query<{ run_id: string; position: number }>(
+    `select r.id::text as run_id, i.position from payroll_runs r
+     join payroll_items i on i.run_id = r.id
+     left join invoices v on v.run_id = r.id and v.position = i.position
+     where r.org_id = $1 and r.status = 'confirmed' and v.id is null
+     order by coalesce(r.paid_at, r.confirmed_at), r.id, i.position`,
+    [orgId],
+  );
+  if (!missing.length) return;
+  const org = await getOrganization(orgId);
+  if (!org) return;
+  const people = new Map((await listEmployees(orgId)).map((e) => [e.id, e]));
+  const runs = new Map<string, { run: Run; items: RunItem[] }>();
+  const { rows: top } = await db.query<{ n: number | null }>(`select max(number) as n from invoices where org_id = $1`, [orgId]);
+  let next = (top[0]?.n ?? 0) + 1;
+  for (const m of missing) {
+    if (!runs.has(m.run_id)) {
+      const found = await getRun(orgId, m.run_id);
+      if (!found) continue;
+      runs.set(m.run_id, found);
+    }
+    const { run, items } = runs.get(m.run_id)!;
+    const item = items[m.position];
+    if (!item) continue;
+    const person = item.employeeId ? people.get(item.employeeId) : undefined;
+    const data = buildInvoice(org, run, item, person, next);
+    try {
+      await db.query(
+        `insert into invoices (org_id, number, run_id, position, issued_at, data) values ($1, $2, $3, $4, $5, $6)`,
+        [orgId, next, run.id, m.position, data.issuedAt, JSON.stringify(data)],
+      );
+      next++;
+    } catch (err) {
+      if (isUniqueViolation(err)) return; // another request is issuing these right now
+      throw err;
+    }
+  }
+}
+
+export async function listInvoices(orgId: string): Promise<Invoice[]> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string; number: number; run_id: string; position: number; issued_at: Date | string; data: InvoiceData | string }>(
+    `select id::text as id, number, run_id::text as run_id, position, issued_at, data from invoices
+     where org_id = $1 order by number desc limit 5000`,
+    [orgId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    number: r.number,
+    runId: r.run_id,
+    position: r.position,
+    issuedAt: iso(r.issued_at)!,
+    data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
+  }));
 }

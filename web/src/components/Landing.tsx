@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { BRAND_LOGOS, type BrandLogo } from "./brand-logos";
 import { Logo, LogoMark } from "./Logo";
+import { ThemeToggle } from "./ThemeToggle";
 import { WalletPicker } from "./WalletPicker";
 
 const WALLETS: { key: BrandLogo; note: string }[] = [
@@ -77,8 +78,8 @@ export function Landing() {
   const connect = () => setPicking(true);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-white">
-      <header className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur">
+    <div className="min-h-screen overflow-x-hidden bg-surface">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
         <div className={`mx-auto flex max-w-6xl items-center gap-6 py-3 ${gutter}`}>
           <Logo className="h-7" />
           <nav aria-label="Sections" className="hidden flex-1 gap-1 text-sm font-medium text-ink-2 md:flex">
@@ -87,7 +88,8 @@ export function Landing() {
             <a href="#safety" className="rounded-lg px-3 py-2 hover:bg-line-soft hover:text-ink">Safety</a>
             <a href="#faq" className="rounded-lg px-3 py-2 hover:bg-line-soft hover:text-ink">FAQ</a>
           </nav>
-          <button type="button" onClick={connect} className="ml-auto min-h-11 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-[0_6px_16px_-6px_rgba(38,71,217,0.6)] hover:bg-brand-dark md:ml-0">
+          <ThemeToggle className="ml-auto hidden sm:inline-flex md:ml-0" />
+          <button type="button" onClick={connect} className="ml-auto min-h-11 rounded-xl bg-brand-solid px-4 text-sm font-semibold text-white shadow-[0_6px_16px_-6px_rgba(38,71,217,0.6)] hover:bg-brand-hover sm:ml-0">
             Connect wallet
           </button>
         </div>
@@ -96,10 +98,10 @@ export function Landing() {
       <main>
         {/* Hero ---------------------------------------------------------------------------------- */}
         <section className="relative bg-canvas">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.55] [background-image:radial-gradient(#C9D2F5_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_70%_40%,black,transparent_70%)]" />
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.55] [background-image:radial-gradient(rgb(var(--c-dots))_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_70%_40%,black,transparent_70%)]" />
           <div className={`relative mx-auto grid max-w-6xl items-center gap-14 py-16 lg:grid-cols-[1fr_1.05fr] lg:py-24 ${gutter}`}>
             <div className="wf-rise">
-              <p className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1 text-[13px] font-semibold text-brand-dark">
+              <p className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[13px] font-semibold text-brand-dark">
                 <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
                 Crypto payroll on Base
               </p>
@@ -111,17 +113,17 @@ export function Landing() {
                 your treasury wallet with a single signature.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <button type="button" onClick={connect} className="inline-flex min-h-14 items-center gap-2 rounded-xl bg-brand px-7 text-[17px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(38,71,217,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-dark">
+                <button type="button" onClick={connect} className="inline-flex min-h-14 items-center gap-2 rounded-xl bg-brand-solid px-7 text-[17px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(38,71,217,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-hover">
                   Connect wallet
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                 </button>
-                <a href="#how" className="inline-flex min-h-14 items-center rounded-xl px-5 text-[17px] font-semibold text-ink hover:bg-white">How it works</a>
+                <a href="#how" className="inline-flex min-h-14 items-center rounded-xl px-5 text-[17px] font-semibold text-ink hover:bg-surface">How it works</a>
               </div>
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3">
                 <span className="text-[13px] font-medium text-ink-2">Works with</span>
                 <ul className="flex items-center gap-2.5">
                   {WALLETS.map((w) => (
-                    <li key={w.key} className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-white shadow-sm" title={BRAND_LOGOS[w.key].name}>
+                    <li key={w.key} className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface shadow-sm" title={BRAND_LOGOS[w.key].name}>
                       <BrandImg logo={w.key} className="h-6 w-6" />
                     </li>
                   ))}
@@ -133,7 +135,7 @@ export function Landing() {
         </section>
 
         {/* At a glance ----------------------------------------------------------------------------- */}
-        <section aria-label="At a glance" className="border-y border-line bg-white">
+        <section aria-label="At a glance" className="border-y border-line bg-surface">
           <dl className={`mx-auto grid max-w-6xl grid-cols-2 gap-y-6 py-8 md:grid-cols-4 ${gutter}`}>
             <Stat value="1 signature" label="pays the whole team" />
             <Stat value="500 people" label="per transaction" />
@@ -154,7 +156,7 @@ export function Landing() {
             <h2 className="mt-2 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Payday in three steps</h2>
             <ol className="mt-10 grid gap-6 md:grid-cols-3">
               {STEPS.map((s, i) => (
-                <li key={s.title} className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-white p-6 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_-24px_rgba(14,20,32,0.35)]">
+                <li key={s.title} className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_-24px_rgba(14,20,32,0.35)]">
                   <div className="flex items-center justify-between">
                     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
                       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{s.icon}</svg>
@@ -179,7 +181,7 @@ export function Landing() {
               <p className="mt-3 max-w-[52ch] text-lg text-ink-2">Connect a single-signer wallet or a Safe, where your approvers become its signers.</p>
               <ul className="mt-8 grid gap-3 sm:grid-cols-2">
                 {WALLETS.map((w) => (
-                  <li key={w.key} className="flex items-center gap-4 rounded-2xl border border-line bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-22px_rgba(14,20,32,0.4)]">
+                  <li key={w.key} className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-22px_rgba(14,20,32,0.4)]">
                     <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-canvas">
                       <BrandImg logo={w.key} className="h-8 w-8" />
                     </span>
@@ -189,7 +191,7 @@ export function Landing() {
                     </span>
                   </li>
                 ))}
-                <li className="flex items-center gap-4 rounded-2xl border border-dashed border-line-strong bg-white/60 p-4">
+                <li className="flex items-center gap-4 rounded-2xl border border-dashed border-line-strong bg-surface/60 p-4">
                   <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-canvas text-ink-2" aria-hidden="true">
                     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M7 6.5h.01M10 6.5h.01" /></svg>
                   </span>
@@ -212,7 +214,7 @@ export function Landing() {
         </section>
 
         {/* Measured --------------------------------------------------------------------------------- */}
-        <section className="bg-ink text-white">
+        <section className="bg-night text-white">
           <div className={`mx-auto max-w-6xl py-20 ${gutter}`}>
             <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#9FB0F0]">Measured, not estimated</p>
             <h2 className="mt-2 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Paying 100 people: one run versus 100 transfers</h2>
@@ -268,7 +270,7 @@ export function Landing() {
         </section>
 
         {/* CTA ---------------------------------------------------------------------------------------- */}
-        <section className="relative overflow-hidden bg-brand text-white">
+        <section className="relative overflow-hidden bg-brand-solid text-white">
           <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-white/10" />
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 right-40 h-72 w-72 rounded-full bg-brand-deep/40" />
           <div className={`relative mx-auto flex max-w-6xl flex-col items-start gap-6 py-16 md:flex-row md:items-center md:justify-between ${gutter}`}>
@@ -276,7 +278,7 @@ export function Landing() {
               <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-tight">Run your next payroll with one signature.</h2>
               <p className="mt-2 text-white/80">Connect a wallet to start. It takes about five minutes to add your team.</p>
             </div>
-            <button type="button" onClick={connect} className="min-h-14 rounded-xl bg-white px-7 text-[17px] font-semibold text-brand-dark shadow-[0_12px_28px_-12px_rgba(14,20,32,0.6)] transition hover:-translate-y-0.5">
+            <button type="button" onClick={connect} className="min-h-14 rounded-xl bg-white px-7 text-[17px] font-semibold text-[#2647D9] shadow-[0_12px_28px_-12px_rgba(14,20,32,0.6)] transition hover:-translate-y-0.5">
               Connect wallet
             </button>
           </div>
@@ -312,7 +314,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function TokenCard({ logo, title, body }: { logo: BrandLogo; title: string; body: string }) {
   return (
-    <div className="flex items-start gap-4 rounded-2xl border border-line bg-white p-5">
+    <div className="flex items-start gap-4 rounded-2xl border border-line bg-surface p-5">
       <Coin logo={logo} size={56} spin={false} />
       <div>
         <h3 className="font-semibold">{title}</h3>
@@ -412,7 +414,7 @@ function Hero3D() {
         {/* back plate for depth */}
         <div aria-hidden="true" className="absolute inset-0 rounded-[28px] bg-brand/15" style={{ transform: "translateZ(-40px) translate(18px, 18px)" }} />
 
-        <figure className="relative rounded-[24px] border border-line bg-white p-5 shadow-[0_40px_80px_-40px_rgba(14,20,32,0.45)] sm:p-6">
+        <figure className="relative rounded-[24px] border border-line bg-surface p-5 shadow-[0_40px_80px_-40px_rgba(14,20,32,0.45)] sm:p-6">
           <div className="flex items-center justify-between gap-3 border-b border-line-soft pb-4">
             <div>
               <p className="text-xs font-medium text-ink-2">October payroll</p>
@@ -425,10 +427,10 @@ function Hero3D() {
               <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 120 ${height}`} preserveAspectRatio="none" aria-hidden="true">
                 {paths.map((d, i) => (
                   <g key={i}>
-                    <path d={d} fill="none" stroke="#2647D9" strokeOpacity={0.18} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-                    <path d={d} fill="none" stroke="#2647D9" strokeOpacity={0.7} strokeWidth="2" strokeDasharray="4 10" vectorEffect="non-scaling-stroke" className="wf-dash" />
+                    <path d={d} fill="none" className="stroke-brand" strokeOpacity={0.18} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                    <path d={d} fill="none" strokeOpacity={0.7} strokeWidth="2" strokeDasharray="4 10" vectorEffect="non-scaling-stroke" className="wf-dash stroke-brand" />
                     {!reduced && (
-                      <circle r="3.5" fill="#2647D9">
+                      <circle r="3.5" className="fill-brand">
                         <animateMotion dur="2.4s" repeatCount="indefinite" begin={`${i * 0.35}s`} path={d} />
                       </circle>
                     )}
@@ -436,7 +438,7 @@ function Hero3D() {
                 ))}
               </svg>
               <div className="absolute left-0 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-ink text-white shadow-lg">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-night text-white shadow-lg">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4" /><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M16 13.5h2" /></svg>
                 </span>
                 <span className="text-[11px] font-medium text-ink-2">Treasury</span>
@@ -444,7 +446,7 @@ function Hero3D() {
             </div>
             <ul className="flex flex-col" style={{ gap: rowGap - 48, paddingBlock: top - 24 }}>
               {PREVIEW.map((p) => (
-                <li key={p.name} className="flex h-12 items-center gap-2 rounded-xl border border-line bg-white px-2 sm:gap-3 sm:px-3">
+                <li key={p.name} className="flex h-12 items-center gap-2 rounded-xl border border-line bg-surface px-2 sm:gap-3 sm:px-3">
                   <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-good-soft text-good sm:h-7 sm:w-7" aria-hidden="true">
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
                   </span>
@@ -472,12 +474,12 @@ function Hero3D() {
           </div>
         </div>
         <div className="pointer-events-none absolute -left-6 top-24 hidden sm:block" style={{ transform: "translateZ(60px)" }} aria-hidden="true">
-          <div className="wf-float flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold shadow-[0_18px_30px_-18px_rgba(14,20,32,0.5)]" style={{ animationDelay: "-1.5s" }}>
+          <div className="wf-float flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold shadow-[0_18px_30px_-18px_rgba(14,20,32,0.5)]" style={{ animationDelay: "-1.5s" }}>
             <BrandImg logo="metamask" className="h-5 w-5" /> Signed once
           </div>
         </div>
         <div className="pointer-events-none absolute -bottom-6 right-6" style={{ transform: "translateZ(70px)" }} aria-hidden="true">
-          <div className="wf-float flex items-center gap-2 rounded-xl bg-ink px-3 py-2 text-xs font-semibold text-white shadow-xl" style={{ animationDelay: "-4.5s" }}>
+          <div className="wf-float flex items-center gap-2 rounded-xl bg-night px-3 py-2 text-xs font-semibold text-white shadow-xl" style={{ animationDelay: "-4.5s" }}>
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-good-dot">
               <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
             </span>
@@ -501,7 +503,7 @@ function RunPipeline() {
         <ol className="relative grid gap-6 md:grid-cols-5">
           {PIPELINE.map((s, i) => (
             <li key={s.title} className="flex gap-4 md:flex-col md:items-center md:text-center">
-              <span className={`relative z-10 flex h-10 w-10 flex-none items-center justify-center rounded-full border-2 text-sm font-semibold ${i === 3 ? "border-brand bg-brand text-white" : "border-brand/30 bg-white text-brand-dark"}`}>
+              <span className={`relative z-10 flex h-10 w-10 flex-none items-center justify-center rounded-full border-2 text-sm font-semibold ${i === 3 ? "border-brand bg-brand-solid text-white" : "border-brand/30 bg-surface text-brand-dark"}`}>
                 {i + 1}
               </span>
               <span className="flex flex-col gap-1">

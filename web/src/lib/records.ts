@@ -15,7 +15,7 @@ export type Rate = { rate: string; source: string };
 /** Used when no price feed is configured. Exports say so, rather than passing $1 off as a market price. */
 export const PAR: Rate = { rate: "1", source: "par (1 token = 1 USD, not a market price)" };
 
-export function rateFor(run: Run, token: TokenSymbol): Rate {
+export function rateFor(run: Pick<Run, "usdRates">, token: TokenSymbol): Rate {
   return run.usdRates?.[token] ?? PAR;
 }
 
@@ -38,7 +38,7 @@ export function addUsd(a: string, b: string): string {
   return `${total / 100n}.${(total % 100n).toString().padStart(2, "0")}`;
 }
 
-export const paidAt = (run: Run) => run.paidAt ?? run.confirmedAt ?? run.createdAt;
+export const paidAt = (run: Pick<Run, "paidAt" | "confirmedAt" | "createdAt">) => run.paidAt ?? run.confirmedAt ?? run.createdAt;
 
 // CSV ----------------------------------------------------------------------------------------------
 

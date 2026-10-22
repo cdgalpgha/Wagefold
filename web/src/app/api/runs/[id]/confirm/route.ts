@@ -6,7 +6,7 @@ import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, requireSession } from "@/lib/server/http";
 import { ratesAt } from "@/lib/server/prices";
-import { getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
+import { ensureInvoices, getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
         txHash: run.txHash,
         ...(result.status === "failed" ? { reason: result.reason } : {}),
       });
+      // Invoices are issued the moment a run is verified. If this fails, the Invoices page issues them later.
+      if (updated.status === "confirmed") await ensureInvoices(session.orgId).catch((err) => console.error("invoice issue failed", err));
     }
     return json({ run: updated ?? run });
   };

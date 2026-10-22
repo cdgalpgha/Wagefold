@@ -1,4 +1,7 @@
-<img src="brand/wagefold-logo.svg" alt="Wagefold" height="48">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/wagefold-logo-dark.svg">
+  <img src="brand/wagefold-logo.svg" alt="Wagefold" height="48">
+</picture>
 
 Crypto payroll in one transaction. A finance team connects its treasury wallet, keeps its team in Wagefold (name, role, EVM wallet, monthly pay in USDC or USDT), and pays everyone with one signature.
 
@@ -26,6 +29,14 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
     <td width="50%"><img src="docs/screenshots/10-payslip.png" alt="Payslip with year-to-date total and transaction"><br><sub><b>Payslips</b>: fiat value, year-to-date total and the transaction as proof of payment</sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/13-invoices.png" alt="Invoices issued automatically for every payment"><br><sub><b>Invoices</b>: issued automatically per payment, numbered in order, one PDF per invoice or per month</sub></td>
+    <td width="50%"><img src="docs/screenshots/17-invoice-pdf.png" alt="Invoice PDF"><br><sub><b>Invoice PDF</b>: supplier, bill-to, amount, USD value and the transaction as proof of payment</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/14-dark-review.png" alt="Review payroll in dark mode"><br><sub><b>Dark mode</b>: follows the system, or pick light or dark</sub></td>
+    <td width="50%"><img src="docs/screenshots/16-dark-landing.png" alt="Landing page in dark mode"><br><sub><b>Dark landing</b>: the whole product, landing included, is themed</sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/11-activity.png" alt="Append-only activity log"><br><sub><b>Activity</b>: who changed which wallet or amount, and every payroll sent</sub></td>
     <td width="50%"><img src="docs/screenshots/3-pay-home.png" alt="Pay home with the next payday"><br><sub><b>Payday</b>: when payroll is due, and a warning if a payday passes unpaid</sub></td>
   </tr>
@@ -39,7 +50,8 @@ Crypto payroll in one transaction. A finance team connects its treasury wallet, 
 4. **Run payroll** snapshots everyone from People into a run and shows what changed since the last paid run (new people, removed people, pay changes, wallet changes). Each changed or never-paid wallet is shown in full and must be confirmed with its owner before sending. A wallet that shares its first and last characters with a wallet you've paid before is flagged as a likely [address-poisoning](https://www.chainalysis.com/blog/address-poisoning-scam/) lookalike. It checks the treasury balance, the ETH for gas, and estimates the network fee, then sends every payment in one transaction through `WagefoldPayroll`.
 5. **The server verifies** the transaction on-chain: it only marks a run paid if the contract paid exactly the snapshotted wallets and amounts, from this company's wallet. It records when the block settled, the network fee, and the USD rate used.
 6. **Records** come from verified runs only: a payslip per payment (with year-to-date totals), a per-payment CSV, a journal in QuickBooks' import layout, and yearly totals per person. History also has an activity log of every change, which can't be edited.
-7. **Payday.** Set a monthly payday in Settings. Pay shows when payroll is due, warns if a payday passed unpaid, and offers a calendar reminder. Wagefold never sends on its own.
+7. **Invoices.** When a run is verified, Wagefold issues an invoice for every payment: numbered in order (prefix set in Settings), billed to your company's legal name, address and tax ID, from each person's name, address and tax ID (optional fields in People). Each invoice is a frozen snapshot: later edits never change it, and the database rejects updates. Download any invoice, or a whole month, as a branded A4 PDF generated in the browser.
+8. **Payday.** Set a monthly payday in Settings. Pay shows when payroll is due, warns if a payday passed unpaid, and offers a calendar reminder. Wagefold never sends on its own.
 
 Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/eip-5792), e.g. Coinbase Smart Wallet) approve and pay with one confirmation. Other wallets first approve each token for exactly this run's total, then confirm the payment.
 
@@ -49,7 +61,7 @@ Wallets that support batched calls ([EIP-5792](https://eips.ethereum.org/EIPS/ei
 | --- | --- |
 | `contracts/` | `WagefoldPayroll.sol` (Solidity 0.8.24, OpenZeppelin SafeERC20), Hardhat tests and deploy scripts |
 | `web/` | Next.js 15 app: wagmi + viem for wallets, API routes, Postgres (embedded PGlite locally) |
-| `brand/` | Logo, mark, app icon (SVG) and brand sheet |
+| `brand/` | Logo set (light, dark, one-colour), mark, app icon, social card, [brand guidelines](brand/BRAND.md) |
 | `docs/screenshots/` | The app, captured from the end-to-end UI run |
 | `docs/research/` | What payroll buyers and recipients complain about and ask for, and the build order it led to |
 
@@ -77,8 +89,15 @@ It has not had an external audit. Get one before handling real payroll.
 - **Wallet fraud:** lookalike addresses are flagged in People and in the review; every new or changed wallet must be confirmed individually, and the confirmation is logged with the run.
 - **Activity log** is append-only in the app and in the database (a trigger rejects updates and deletes), scoped to the company, and records the signer's address for every change.
 - **Exports** neutralise spreadsheet formulas in user-typed fields (CSV injection), and payslips escape every value and contain no scripts.
+- **Invoices** are scoped to the company, issued once per payment (unique constraints stop duplicates under concurrent requests) and immutable in the database. PDFs are built in the browser from data the server already returned; nothing is uploaded.
 - **Headers:** `frame-ancestors 'self' https://app.safe.global` (anti-clickjacking while still allowing the Safe app), `nosniff`, HSTS, and `Cache-Control: no-store` on all API responses.
 - **Known items:** no rate limiting yet (add it at the proxy or edge); `ws` inside the WalletConnect SDK has a published advisory that needs a wagmi major upgrade; the contract is unaudited.
+
+## Brand and themes
+
+The product has light and dark themes (system by default, switchable in the header and in Settings). Every colour is a CSS variable token, so the app, landing page and logo switch together. See [brand/BRAND.md](brand/BRAND.md) for the logo set, palette with contrast ratios, type, document template and voice.
+
+![Brand guidelines](brand/brand-guidelines.png)
 
 ## Run it locally
 
@@ -116,7 +135,7 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
 1. **Contract.** Copy `contracts/.env.example` to `contracts/.env` and set `DEPLOYER_PRIVATE_KEY` (a fresh wallet with a little ETH on Base). Then `npm run deploy:base-sepolia` to test, `npm run deploy:base` for production.
 2. **App.** Set the variables from `web/.env.example`:
    - `SESSION_SECRET`: a long random string (required in production)
-   - `APP_DOMAIN`: the exact host people sign in on, e.g. `wagefold.app` (required in production)
+   - `APP_DOMAIN`: the exact host people sign in on, e.g. `wagefold.app` (required in production, and set it at build time too: it makes the social-card URL absolute)
    - `DATABASE_URL`: a hosted Postgres URL. The embedded database only suits a single long-running server, not serverless.
    - `NEXT_PUBLIC_PAYROLL_ADDRESS_8453` (and/or `_84532`): the deployed contract
    - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: from WalletConnect Cloud, to enable Trust Wallet and other phone wallets
@@ -134,3 +153,4 @@ The [research](docs/research/payroll-buyer-needs.md) ranks these next:
 - Team roles with maker-checker approval: whoever edits wallets or amounts can't approve the run; a cooling-off period on wallet changes
 - A recipient view: payment status and payslips without asking the employer
 - Xero journal layout and email reminders before payday
+- Emailing invoices and payslips to each person

@@ -2,10 +2,10 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-brand text-white hover:bg-brand-dark disabled:bg-[#C9D2F5] disabled:text-[#31428F]",
-  secondary: "border border-[#D5D9E0] bg-white text-ink hover:border-brand hover:text-brand-dark",
+  primary: "bg-brand-solid text-white hover:bg-brand-hover disabled:bg-brand-muted disabled:text-brand-muted-ink",
+  secondary: "border border-line-strong bg-surface text-ink hover:border-brand hover:text-brand-dark",
   ghost: "text-brand hover:underline",
-  danger: "border border-[#F1C4BF] bg-white text-bad hover:bg-bad-soft",
+  danger: "border border-bad-line bg-surface text-bad hover:bg-bad-soft",
 };
 const SIZES = { md: "min-h-11 px-4 text-sm", lg: "min-h-14 px-7 text-[17px]" };
 
@@ -25,7 +25,7 @@ export function Button({
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-line bg-white ${className}`}>{children}</section>;
+  return <section className={`rounded-2xl border border-line bg-surface ${className}`}>{children}</section>;
 }
 
 export function Spinner({ className = "" }: { className?: string }) {
@@ -64,7 +64,7 @@ export function Field({ label, children, hint, className = "" }: { label: string
 }
 
 export const inputClass =
-  "min-h-11 w-full rounded-[10px] border border-line-strong bg-white px-3 text-[15px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none";
+  "min-h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3 text-[15px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none";
 
 export function shortAddress(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;

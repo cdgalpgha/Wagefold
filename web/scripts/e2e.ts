@@ -171,7 +171,7 @@ async function main() {
     const res = await api("/api/employees", {
       body: {
         employees: [
-          { name: "Priya Nair", role: "Head of Finance", wallet: RECIPIENTS[0], amount: "9,400", token: "USDC" },
+          { name: "Priya Nair", role: "Head of Finance", wallet: RECIPIENTS[0], amount: "9,400", token: "USDC", email: "priya@example.com", address: "1 Market St, Lagos", taxId: "NG-123" },
           { name: "Maya Chen", role: "Engineer", wallet: RECIPIENTS[1].toLowerCase(), amount: "0.5", token: "USDC" },
           { name: "Tunde Bakare", role: "Engineer", wallet: RECIPIENTS[2], amount: "6900", token: "USDT" },
           { name: "Broken", role: "", wallet: "0x123", amount: "10", token: "USDC" },
@@ -221,6 +221,40 @@ async function main() {
     const res = await api(`/api/runs/${run.id}/confirm`, { body: {} });
     assert.equal(res.status, 200);
     assert.equal(res.body.run.status, "confirmed", JSON.stringify(res.body));
+  });
+
+  await step("issues one numbered invoice per payment as soon as the run is verified", async () => {
+    const first = await api("/api/invoices");
+    assert.equal(first.status, 200);
+    const invoices = [...first.body.invoices].sort((a: { number: number }, b: { number: number }) => a.number - b.number);
+    assert.deepEqual(invoices.map((i: { number: number }) => i.number), [1, 2, 3]);
+    assert.deepEqual(invoices.map((i: { data: { label: string } }) => i.data.label), ["INV-0001", "INV-0002", "INV-0003"]);
+    const priya = invoices[0].data;
+    assert.equal(priya.supplier.name, "Priya Nair");
+    assert.equal(priya.supplier.wallet, RECIPIENTS[0]);
+    assert.equal(priya.supplier.email, "priya@example.com");
+    assert.equal(priya.supplier.taxId, "NG-123");
+    assert.equal(priya.amount, "9400");
+    assert.equal(priya.txHash, txHash);
+    assert.equal(priya.customer.wallet, privateKeyToAccount(KEYS.treasury).address);
+    // Asking again doesn't issue duplicates.
+    assert.equal((await api("/api/invoices")).body.invoices.length, 3);
+  });
+
+  await step("issued invoices don't change when company or people details change", async () => {
+    const saved = await api("/api/me", { method: "PATCH", body: { legalName: "Northwind Labs Ltd", invoicePrefix: "NW-", address: "14 Harbour St" } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal((await api("/api/me", { method: "PATCH", body: { invoicePrefix: "<b>" } })).status, 400);
+    const { body } = await api("/api/employees");
+    const priya = body.employees.find((e: { name: string }) => e.name === "Priya Nair");
+    assert.equal(priya.taxId, "NG-123");
+    assert.equal((await api(`/api/employees/${priya.id}`, { method: "PATCH", body: { ...priya, email: "not an email" } })).status, 400);
+    await api(`/api/employees/${priya.id}`, { method: "PATCH", body: { ...priya, address: "New address" } });
+    const after = (await api("/api/invoices")).body.invoices.find((i: { number: number }) => i.number === 1);
+    assert.equal(after.data.label, "INV-0001");
+    assert.equal(after.data.supplier.address, "1 Market St, Lagos");
+    assert.notEqual(after.data.customer.name, "Northwind Labs Ltd");
+    assert.equal((await api("/api/invoices", { method: "DELETE" })).status, 405);
   });
 
   await step("recipients received exactly the right amounts", async () => {
@@ -340,6 +374,7 @@ async function main() {
     assert.ok(!mine.body.employees.some((e: { name: string }) => e.name === "Intruder"));
     assert.equal((await other(`/api/runs/${run.id}`)).status, 404);
     assert.equal((await other("/api/records")).body.runs.length, 0);
+    assert.equal((await other("/api/invoices")).body.invoices.length, 0);
     const theirs = (await other("/api/activity")).body.activity;
     assert.ok(theirs.every((a: { actor: string }) => a.actor === privateKeyToAccount(KEYS.otherCompany).address));
   });

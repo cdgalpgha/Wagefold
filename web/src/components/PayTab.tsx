@@ -207,7 +207,7 @@ function Schedule({ payDay, lastPaidAt, onOpenSettings }: { payDay: number | nul
   const when = st.next.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const paidThisCycle = lastPaidAt !== null && new Date(lastPaidAt).getTime() >= st.next.getTime() - 10 * 86_400_000;
   return (
-    <Card className={`flex flex-wrap items-center gap-3 px-5 py-4 ${st.missed ? "border-[#F3D9A4] bg-warn-soft" : ""}`}>
+    <Card className={`flex flex-wrap items-center gap-3 px-5 py-4 ${st.missed ? "border-warn-line bg-warn-soft" : ""}`}>
       <CalendarIcon />
       <span className="flex flex-1 basis-56 flex-col gap-0.5">
         <span className="text-[15px] font-medium">
@@ -306,7 +306,7 @@ function Review({
       </div>
 
       {review.lookalikes.length > 0 && (
-        <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-[#F1C4BF] bg-bad-soft p-5 text-sm text-bad-text">
+        <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-bad-line bg-bad-soft p-5 text-sm text-bad-text">
           <p className="text-base font-semibold">
             {review.lookalikes.length === 1 ? "One wallet looks like another wallet" : `${review.lookalikes.length} wallets look like other wallets`} you&apos;ve paid
           </p>
@@ -365,7 +365,7 @@ function Review({
               const k = i.wallet.toLowerCase();
               const like = lookalikes.get(k);
               return (
-                <li key={i.wallet} className={`flex flex-col gap-2.5 px-5 py-4 ${like ? "bg-[#FFF8F7]" : ""}`}>
+                <li key={i.wallet} className={`flex flex-col gap-2.5 px-5 py-4 ${like ? "bg-bad-soft/40" : ""}`}>
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-semibold">{i.name}</span>
                     {like ? <Badge tone="bad">Looks like {like.resemblesName}&apos;s wallet</Badge> : changedWallets.has(k) ? <Badge tone="bad">Wallet changed</Badge> : <Badge tone="warn">First payment</Badge>}
@@ -423,7 +423,7 @@ function Review({
       </Card>
 
       {review.firstRun && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#F3D9A4] bg-warn-soft p-4 text-sm text-warn">
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-warn-line bg-warn-soft p-4 text-sm text-warn">
           <input type="checkbox" checked={allChecked} onChange={(e) => setAllChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
           <span>
             <span className="font-semibold">I&apos;ve checked all {items.length} wallet addresses with each person.</span> Payments to a wrong address can&apos;t be

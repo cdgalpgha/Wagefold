@@ -1,17 +1,35 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { THEME_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 
+const title = "Wagefold · Crypto payroll in one transaction";
+const description = "Connect your treasury wallet and pay your whole team in USDC or USDT with one signature.";
+
 export const metadata: Metadata = {
-  title: "Wagefold · Crypto payroll in one transaction",
-  description: "Connect your treasury wallet and pay your whole team in USDC or USDT with one signature.",
+  // Absolute URLs for the social card; APP_DOMAIN is the public host in production.
+  metadataBase: new URL(process.env.APP_DOMAIN ? `https://${process.env.APP_DOMAIN}` : "http://localhost:3000"),
+  title,
+  description,
+  applicationName: "Wagefold",
+  manifest: "/manifest.webmanifest",
+  openGraph: { title, description, siteName: "Wagefold", type: "website" },
+  twitter: { card: "summary_large_image", title, description },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F5F6F8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0A0D14" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link

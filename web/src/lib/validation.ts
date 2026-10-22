@@ -1,7 +1,12 @@
 import { getAddress, isAddress, zeroAddress } from "viem";
 import { z } from "zod";
 import { TOKEN_SYMBOLS } from "./chains";
+import { PREFIX_RE } from "./invoices";
 import { normalizeAmount } from "./money";
+import { isPayDay } from "./schedule";
+
+// Invoices are one page; an address is printed in full, so it has to stay short.
+const fewLines = (v: string) => v.split("\n").length <= 6;
 
 export const employeeInput = z.object({
   name: z.string().trim().min(1, "Add a name.").max(80, "Keep the name under 80 characters."),
@@ -25,16 +30,38 @@ export const employeeInput = z.object({
       return n;
     }),
   token: z.enum(TOKEN_SYMBOLS, { errorMap: () => ({ message: "Token must be USDC or USDT." }) }),
+  email: z
+    .string()
+    .trim()
+    .max(200, "Keep the email under 200 characters.")
+    .refine((v) => v === "" || /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v), "That email address doesn't look right.")
+    .default(""),
+  address: z.string().trim().max(300, "Keep the address under 300 characters.").refine(fewLines, "Keep the address to 6 lines.").default(""),
+  taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").default(""),
 });
 
 export type EmployeeInput = z.infer<typeof employeeInput>;
+
+/** Company settings. Strict: unknown fields (such as ownerAddress) are rejected, not ignored. */
+export const orgPatchInput = z
+  .object({
+    name: z.string().trim().min(1, "Company name can't be empty.").max(80, "Company name must be 80 characters or fewer.").optional(),
+    payDay: z.union([z.null(), z.number().refine(isPayDay, "Payday must be a day from 1 to 28, or the last day of the month.")]).optional(),
+    legalName: z.string().trim().max(120, "Keep the legal name under 120 characters.").optional(),
+    address: z.string().trim().max(300, "Keep the address under 300 characters.").refine(fewLines, "Keep the address to 6 lines.").optional(),
+    taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").optional(),
+    invoicePrefix: z.string().trim().regex(PREFIX_RE, "Invoice prefix: up to 12 letters, numbers, - / or _.").optional(),
+    invoiceNote: z.string().trim().max(500, "Keep the invoice note under 500 characters.").optional(),
+  })
+  .strict();
+export type OrgPatchInput = z.infer<typeof orgPatchInput>;
 
 export function firstError(err: z.ZodError): string {
   return err.issues[0]?.message ?? "Invalid input.";
 }
 
 /**
- * Parses CSV text with the header row: name,role,wallet,amount,token
+ * Parses CSV text with the header row: name,role,wallet,amount,token (plus optional email,address,tax_id)
  * Quoted fields are supported so names and amounts may contain commas.
  */
 export function parseEmployeesCsv(text: string): { rows: Record<string, string>[]; error?: string } {
@@ -49,6 +76,10 @@ export function parseEmployeesCsv(text: string): { rows: Record<string, string>[
     const row: Record<string, string> = {};
     header.forEach((h, i) => (row[h] = (cells[i] ?? "").trim()));
     if (!row.token) row.token = "USDC";
+    if (row.tax_id !== undefined) {
+      row.taxId = row.tax_id;
+      delete row.tax_id;
+    }
     row.token = row.token.toUpperCase();
     return row;
   });

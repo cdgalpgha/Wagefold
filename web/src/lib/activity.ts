@@ -2,10 +2,10 @@ import type { TokenSymbol } from "./chains";
 import { formatAmount, toUnits } from "./money";
 import type { Activity } from "./types";
 
-type PersonFields = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol };
+type PersonFields = { name: string; role: string; wallet: string; amount: string; token: TokenSymbol; email?: string; address?: string; taxId?: string };
 export type FieldChange = [before: string, after: string];
 
-const FIELDS = ["name", "role", "wallet", "amount", "token"] as const;
+const FIELDS = ["name", "role", "wallet", "amount", "token", "email", "address", "taxId"] as const;
 
 /** What changed on a person, field by field, so the log reads "wallet 0x3C44… → 0x9F12…" rather than "edited". */
 export function personChanges(before: PersonFields, after: PersonFields): Partial<Record<(typeof FIELDS)[number], FieldChange>> {
@@ -16,8 +16,8 @@ export function personChanges(before: PersonFields, after: PersonFields): Partia
         ? before.wallet.toLowerCase() === after.wallet.toLowerCase()
         : f === "amount"
           ? toUnits(before.amount) === toUnits(after.amount)
-          : before[f] === after[f];
-    if (!same) out[f] = [before[f], after[f]];
+          : (before[f] ?? "") === (after[f] ?? "");
+    if (!same) out[f] = [before[f] ?? "", after[f] ?? ""];
   }
   return out;
 }
@@ -40,7 +40,11 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
     case "person_updated": {
       const changes = (d.changes ?? {}) as Record<string, FieldChange>;
       const parts = Object.entries(changes).map(([field, [b, n]]) =>
-        field === "wallet" ? `wallet ${short(b)} → ${short(n)}` : field === "amount" ? `pay ${formatSafe(b)} → ${formatSafe(n)}` : `${field} “${b}” → “${n}”`,
+        field === "wallet"
+          ? `wallet ${short(b)} → ${short(n)}`
+          : field === "amount"
+            ? `pay ${formatSafe(b)} → ${formatSafe(n)}`
+            : `${field === "taxId" ? "tax ID" : field} “${b}” → “${n}”`,
       );
       return { title: `${changes.wallet ? "Changed the wallet of" : "Edited"} ${str(d.name)}`, detail: parts.join(" · "), tone: changes.wallet ? "warn" : "neutral" };
     }
@@ -58,7 +62,8 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
       return { title: "Payroll not recorded as paid", detail: str(d.reason), tone: "bad" };
     case "company_updated": {
       const changes = (d.changes ?? {}) as Record<string, FieldChange>;
-      const parts = Object.entries(changes).map(([f, [b, n]]) => `${f === "payDay" ? "payday" : f} ${b || "not set"} → ${n || "not set"}`);
+      const NAMES: Record<string, string> = { payDay: "payday", legalName: "legal name", taxId: "tax ID", invoicePrefix: "invoice prefix", invoiceNote: "invoice note" };
+      const parts = Object.entries(changes).map(([f, [b, n]]) => `${NAMES[f] ?? f} ${b || "not set"} → ${n || "not set"}`);
       return { title: "Updated company settings", detail: parts.join(" · "), tone: "neutral" };
     }
   }

@@ -8,9 +8,11 @@ export function canSave(_filename: string): boolean {
   return true;
 }
 
-export async function saveFile(filename: string, data: string): Promise<SaveResult> {
-  const type = filename.endsWith(".csv") ? "text/csv" : filename.endsWith(".ics") ? "text/calendar" : filename.endsWith(".html") ? "text/html" : "text/plain";
-  const url = URL.createObjectURL(new Blob([data], { type: `${type};charset=utf-8` }));
+const TYPES: Record<string, string> = { csv: "text/csv;charset=utf-8", ics: "text/calendar;charset=utf-8", html: "text/html;charset=utf-8", pdf: "application/pdf" };
+
+export async function saveFile(filename: string, data: string | Uint8Array): Promise<SaveResult> {
+  const type = TYPES[filename.split(".").pop() ?? ""] ?? "text/plain;charset=utf-8";
+  const url = URL.createObjectURL(new Blob([data as BlobPart], { type }));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

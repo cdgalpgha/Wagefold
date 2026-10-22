@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { getChainConfig } from "@/lib/chains";
 import { friendlyError } from "@/lib/errors";
 import { Logo } from "./Logo";
+import { ThemeToggle } from "./ThemeToggle";
 import { NetworkSwitcher } from "./NetworkSwitcher";
 import { Button, Card, shortAddress, Spinner } from "./ui";
 
@@ -49,9 +50,10 @@ export function SignInScreen() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-line bg-white">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
           <Logo className="h-7" />
+          <ThemeToggle className="ml-auto" />
         </div>
       </header>
       <main className="flex flex-1 justify-center px-6 py-14">

@@ -2,9 +2,136 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --c-canvas: 245 246 248;
+  --c-surface: 255 255 255;
+  --c-surface-2: 250 251 252;
+  --c-night: 14 20 32;
+  --c-ink: 14 20 32;
+  --c-ink-2: 74 83 99;
+  --c-ink-3: 91 100 114;
+  --c-line: 227 230 235;
+  --c-line-soft: 238 240 243;
+  --c-line-strong: 196 202 211;
+  --c-brand: 38 71 217;
+  --c-brand-solid: 38 71 217;
+  --c-brand-hover: 26 53 176;
+  --c-brand-dark: 26 53 176;
+  --c-brand-deep: 23 44 143;
+  --c-brand-soft: 235 239 253;
+  --c-brand-muted: 201 210 245;
+  --c-brand-muted-ink: 49 66 143;
+  --c-good: 11 107 66;
+  --c-good-soft: 230 244 236;
+  --c-good-dot: 18 160 92;
+  --c-bad: 180 35 24;
+  --c-bad-text: 159 29 20;
+  --c-bad-soft: 253 236 234;
+  --c-bad-line: 241 196 191;
+  --c-warn: 122 71 0;
+  --c-warn-soft: 253 243 225;
+  --c-warn-line: 243 217 164;
+  --c-warn-dot: 232 163 58;
+  --c-logo-a: 23 44 143;
+  --c-logo-b: 38 71 217;
+  --c-dots: 201 210 245;
+  --c-tone-1: 220 228 253;
+  --c-tone-2: 227 241 232;
+  --c-tone-3: 251 233 215;
+  --c-tone-4: 238 227 250;
+  --c-tone-5: 224 240 244;
+  --c-tone-6: 248 225 231;
+  color-scheme: light;
+}
+/* Dark follows the system unless the person picked a theme (data-theme on <html>). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --c-canvas: 10 13 20;
+  --c-surface: 18 23 34;
+  --c-surface-2: 23 29 42;
+  --c-night: 31 38 54;
+  --c-ink: 232 236 243;
+  --c-ink-2: 163 172 188;
+  --c-ink-3: 138 147 163;
+  --c-line: 39 46 61;
+  --c-line-soft: 29 35 48;
+  --c-line-strong: 58 67 85;
+  --c-brand: 124 149 255;
+  --c-brand-solid: 59 91 230;
+  --c-brand-hover: 79 109 240;
+  --c-brand-dark: 169 186 255;
+  --c-brand-deep: 47 75 209;
+  --c-brand-soft: 27 35 72;
+  --c-brand-muted: 37 46 82;
+  --c-brand-muted-ink: 141 155 208;
+  --c-good: 74 222 154;
+  --c-good-soft: 15 42 30;
+  --c-good-dot: 34 199 122;
+  --c-bad: 248 113 113;
+  --c-bad-text: 252 165 165;
+  --c-bad-soft: 44 20 22;
+  --c-bad-line: 90 35 40;
+  --c-warn: 245 194 107;
+  --c-warn-soft: 42 32 16;
+  --c-warn-line: 90 69 32;
+  --c-warn-dot: 232 163 58;
+  --c-logo-a: 61 91 224;
+  --c-logo-b: 125 147 242;
+  --c-dots: 40 50 85;
+  --c-tone-1: 33 44 84;
+  --c-tone-2: 22 50 38;
+  --c-tone-3: 58 40 22;
+  --c-tone-4: 46 33 70;
+  --c-tone-5: 20 48 56;
+  --c-tone-6: 60 28 38;
+  color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --c-canvas: 10 13 20;
+  --c-surface: 18 23 34;
+  --c-surface-2: 23 29 42;
+  --c-night: 31 38 54;
+  --c-ink: 232 236 243;
+  --c-ink-2: 163 172 188;
+  --c-ink-3: 138 147 163;
+  --c-line: 39 46 61;
+  --c-line-soft: 29 35 48;
+  --c-line-strong: 58 67 85;
+  --c-brand: 124 149 255;
+  --c-brand-solid: 59 91 230;
+  --c-brand-hover: 79 109 240;
+  --c-brand-dark: 169 186 255;
+  --c-brand-deep: 47 75 209;
+  --c-brand-soft: 27 35 72;
+  --c-brand-muted: 37 46 82;
+  --c-brand-muted-ink: 141 155 208;
+  --c-good: 74 222 154;
+  --c-good-soft: 15 42 30;
+  --c-good-dot: 34 199 122;
+  --c-bad: 248 113 113;
+  --c-bad-text: 252 165 165;
+  --c-bad-soft: 44 20 22;
+  --c-bad-line: 90 35 40;
+  --c-warn: 245 194 107;
+  --c-warn-soft: 42 32 16;
+  --c-warn-line: 90 69 32;
+  --c-warn-dot: 232 163 58;
+  --c-logo-a: 61 91 224;
+  --c-logo-b: 125 147 242;
+  --c-dots: 40 50 85;
+  --c-tone-1: 33 44 84;
+  --c-tone-2: 22 50 38;
+  --c-tone-3: 58 40 22;
+  --c-tone-4: 46 33 70;
+  --c-tone-5: 20 48 56;
+  --c-tone-6: 60 28 38;
+  color-scheme: dark;
+}
+
 html { -webkit-font-smoothing: antialiased; }
 body { @apply bg-canvas text-ink font-sans; }
-:focus-visible { outline: 2px solid #2647D9; outline-offset: 2px; }
+:focus-visible { outline: 2px solid rgb(var(--c-brand)); outline-offset: 2px; }
 .tabular { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
@@ -19,5 +146,10 @@ body { @apply bg-canvas text-ink font-sans; }
 .wf-dash { animation: wf-dash 1.6s linear infinite; }
 .wf-rail-dot { animation: wf-rail 4.5s ease-in-out infinite; }
 .wf-rise { animation: wf-rise 0.7s ease-out both; }
+/* Loading mark: the two strokes fold in from opposite sides, then rest. */
+@keyframes wf-fold-a { 0% { transform: translateX(-6px); opacity: 0; } 35%, 100% { transform: none; opacity: 1; } }
+@keyframes wf-fold-b { 0%, 15% { transform: translateX(6px); opacity: 0; } 50%, 100% { transform: none; opacity: 1; } }
+.wf-fold path:first-child { animation: wf-fold-b 1.6s cubic-bezier(.2,.7,.2,1) infinite alternate; }
+.wf-fold path:last-child { animation: wf-fold-a 1.6s cubic-bezier(.2,.7,.2,1) infinite alternate; }
 .preserve-3d { transform-style: preserve-3d; }
 .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
