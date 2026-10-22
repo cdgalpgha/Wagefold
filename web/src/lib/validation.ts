@@ -8,6 +8,8 @@ import { isPayDay } from "./schedule";
 
 /** No line breaks or other control characters: names appear inside messages people sign. */
 const oneLine = (v: string) => !/[\u0000-\u001f\u007f\u2028\u2029]/.test(v);
+/** Multi-line text (addresses): line breaks are fine, other control characters (such as NUL) are not. */
+const textOnly = (v: string) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v);
 
 // Invoices are one page; an address is printed in full, so it has to stay short.
 const fewLines = (v: string) => v.split("\n").length <= 6;
@@ -38,10 +40,17 @@ export const employeeInput = z.object({
     .string()
     .trim()
     .max(200, "Keep the email under 200 characters.")
+    .refine(oneLine, "That email address doesn't look right.")
     .refine((v) => v === "" || /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v), "That email address doesn't look right.")
     .default(""),
-  address: z.string().trim().max(300, "Keep the address under 300 characters.").refine(fewLines, "Keep the address to 6 lines.").default(""),
-  taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").default(""),
+  address: z
+    .string()
+    .trim()
+    .max(300, "Keep the address under 300 characters.")
+    .refine(fewLines, "Keep the address to 6 lines.")
+    .refine(textOnly, "The address has characters that can't be stored.")
+    .default(""),
+  taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").refine(oneLine, "The tax ID must be one line.").default(""),
 });
 
 export type EmployeeInput = z.infer<typeof employeeInput>;
@@ -52,16 +61,25 @@ export const orgPatchInput = z
     name: z.string().trim().min(1, "Company name can't be empty.").max(80, "Company name must be 80 characters or fewer.").refine(oneLine, "Company name must be one line.").optional(),
     payDay: z.union([z.null(), z.number().refine(isPayDay, "Payday must be a day from 1 to 28, or the last day of the month.")]).optional(),
     legalName: z.string().trim().max(120, "Keep the legal name under 120 characters.").refine(oneLine, "Legal name must be one line.").optional(),
-    address: z.string().trim().max(300, "Keep the address under 300 characters.").refine(fewLines, "Keep the address to 6 lines.").optional(),
-    taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").optional(),
+    address: z
+      .string()
+      .trim()
+      .max(300, "Keep the address under 300 characters.")
+      .refine(fewLines, "Keep the address to 6 lines.")
+      .refine(textOnly, "The address has characters that can't be stored.")
+      .optional(),
+    taxId: z.string().trim().max(50, "Keep the tax ID under 50 characters.").refine(oneLine, "The tax ID must be one line.").optional(),
     invoicePrefix: z.string().trim().regex(PREFIX_RE, "Invoice prefix: up to 12 letters, numbers, - / or _.").optional(),
-    invoiceNote: z.string().trim().max(500, "Keep the invoice note under 500 characters.").optional(),
+    invoiceNote: z.string().trim().max(500, "Keep the invoice note under 500 characters.").refine(oneLine, "The invoice note must be one line.").optional(),
   })
   .strict();
 export type OrgPatchInput = z.infer<typeof orgPatchInput>;
 
 export function firstError(err: z.ZodError): string {
-  return err.issues[0]?.message ?? "Invalid input.";
+  const issue = err.issues[0];
+  // readJson returns null for bodies that aren't JSON (or carry NUL characters).
+  if (issue?.code === "invalid_type" && issue.path.length === 0) return "That request couldn't be read.";
+  return issue?.message ?? "Invalid input.";
 }
 
 /**

@@ -44,9 +44,15 @@ const DENIED: Record<Action, string> = {
   team: "Only the owner can change the team or the approval rule.",
 };
 
+/**
+ * The request body as JSON, or null if it isn't JSON. Bodies containing a NUL character anywhere are
+ * refused too (null): Postgres can't store NUL, and no legitimate field needs one.
+ */
 export async function readJson(req: Request): Promise<unknown> {
   try {
-    return await req.json();
+    const text = await req.text();
+    if (text.length > 2_000_000 || text.includes("\u0000") || text.includes("\\u0000")) return null;
+    return JSON.parse(text);
   } catch {
     return null;
   }

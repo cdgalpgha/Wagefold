@@ -1,0 +1,564 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Wagefold API",
+  "version": "1"
+ },
+ "servers": [
+  {
+   "url": "http://localhost:3000"
+  }
+ ],
+ "paths": {
+  "/api/auth/nonce": {
+   "get": {
+    "summary": "nonce",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   }
+  },
+  "/api/auth/verify": {
+   "post": {
+    "summary": "verify",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "message": {
+          "type": "string"
+         },
+         "signature": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "message": "localhost:3000 wants you to sign in",
+        "signature": "0x00"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me": {
+   "get": {
+    "summary": "me",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   },
+   "patch": {
+    "summary": "settings",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "legalName": {
+          "type": "string"
+         },
+         "address": {
+          "type": "string"
+         },
+         "taxId": {
+          "type": "string"
+         },
+         "invoicePrefix": {
+          "type": "string"
+         },
+         "invoiceNote": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "name": "Northwind Labs",
+        "legalName": "Northwind Ltd",
+        "address": "1 Road",
+        "taxId": "GB1",
+        "invoicePrefix": "NW-",
+        "invoiceNote": "Thanks"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/session/switch": {
+   "post": {
+    "summary": "switch",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "orgId": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "orgId": "00000000-0000-0000-0000-000000000000"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/team": {
+   "get": {
+    "summary": "team",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   },
+   "post": {
+    "summary": "add member",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "address": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         },
+         "role": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "address": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720",
+        "name": "Scan Admin",
+        "role": "viewer"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/team/policy": {
+   "patch": {
+    "summary": "policy",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "approvalsRequired": {
+          "type": "integer"
+         }
+        }
+       },
+       "example": {
+        "approvalsRequired": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/employees": {
+   "get": {
+    "summary": "list",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   },
+   "post": {
+    "summary": "add",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "role": {
+          "type": "string"
+         },
+         "wallet": {
+          "type": "string"
+         },
+         "amount": {
+          "type": "string"
+         },
+         "token": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "address": {
+          "type": "string"
+         },
+         "taxId": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "name": "Zed Test",
+        "role": "Engineer",
+        "wallet": "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955",
+        "amount": "100",
+        "token": "USDC",
+        "email": "z@example.com",
+        "address": "1 Road",
+        "taxId": "X1"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/employees/EMPLOYEE_ID": {
+   "patch": {
+    "summary": "edit",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "role": {
+          "type": "string"
+         },
+         "wallet": {
+          "type": "string"
+         },
+         "amount": {
+          "type": "string"
+         },
+         "token": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "address": {
+          "type": "string"
+         },
+         "taxId": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "name": "Priya Nair",
+        "role": "Engineer",
+        "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "amount": "100",
+        "token": "USDC",
+        "email": "z@example.com",
+        "address": "1 Road",
+        "taxId": "X1"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs": {
+   "get": {
+    "summary": "runs",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   },
+   "post": {
+    "summary": "create run",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "chainId": {
+          "type": "integer"
+         }
+        }
+       },
+       "example": {
+        "chainId": 31337
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID": {
+   "get": {
+    "summary": "run",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/approve": {
+   "get": {
+    "summary": "approval message",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   },
+   "post": {
+    "summary": "approve",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "signature": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "signature": "0x00"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/reject": {
+   "post": {
+    "summary": "reject",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "reason": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "reason": "test"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/cancel": {
+   "post": {
+    "summary": "cancel",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       },
+       "example": {}
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/request": {
+   "post": {
+    "summary": "request",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       },
+       "example": {
+        "verifiedWallets": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/submit": {
+   "post": {
+    "summary": "submit",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "txHash": {
+          "type": "string"
+         }
+        }
+       },
+       "example": {
+        "txHash": "0xabababababababababababababababababababababababababababababababab"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/RUN_ID/confirm": {
+   "post": {
+    "summary": "confirm",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       },
+       "example": {}
+      }
+     }
+    }
+   }
+  },
+  "/api/records": {
+   "get": {
+    "summary": "records",
+    "parameters": [
+     {
+      "name": "year",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "example": "2026"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   }
+  },
+  "/api/invoices": {
+   "get": {
+    "summary": "invoices",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   }
+  },
+  "/api/activity": {
+   "get": {
+    "summary": "activity",
+    "responses": {
+     "200": {
+      "description": "ok"
+     }
+    }
+   }
+  }
+ }
+}

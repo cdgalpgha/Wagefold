@@ -30,8 +30,9 @@ export default {
         tone: { 1: v("tone-1"), 2: v("tone-2"), 3: v("tone-3"), 4: v("tone-4"), 5: v("tone-5"), 6: v("tone-6") },
       },
       fontFamily: {
-        sans: ["Geist", "system-ui", "sans-serif"],
-        mono: ["'Geist Mono'", "ui-monospace", "monospace"],
+        // The app self-hosts Geist through next/font (CSS variables); the demo page loads the same family by name.
+        sans: ["var(--font-geist)", "Geist", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "'Geist Mono'", "ui-monospace", "monospace"],
       },
     },
   },

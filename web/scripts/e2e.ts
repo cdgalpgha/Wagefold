@@ -145,10 +145,28 @@ async function main() {
     assert.equal(res.status, 401, JSON.stringify(res.body));
   });
 
-  await step("sends anti-clickjacking and no-cache headers", async () => {
+  await step("sends a nonce-based CSP, anti-clickjacking and no-cache headers", async () => {
     const page = await fetch(BASE + "/");
-    assert.match(page.headers.get("content-security-policy") ?? "", /frame-ancestors 'self' https:\/\/app\.safe\.global/);
+    const csp = page.headers.get("content-security-policy") ?? "";
+    assert.match(csp, /frame-ancestors 'self' https:\/\/app\.safe\.global/);
+    assert.match(csp, /script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+    assert.match(csp, /object-src 'none'/);
+    assert.ok(!/script-src[^;]*'unsafe-inline'/.test(csp), "scripts must not allow unsafe-inline");
+    const nonce = csp.match(/'nonce-([^']+)'/)![1];
+    const html = await page.text();
+    assert.ok(html.includes(`nonce="${nonce}"`), "inline scripts carry this request's nonce");
+    const again = (await fetch(BASE + "/")).headers.get("content-security-policy") ?? "";
+    assert.notEqual(again.match(/'nonce-([^']+)'/)![1], nonce, "a fresh nonce per request");
+    assert.ok(!html.includes("fonts.googleapis.com"), "fonts are self-hosted");
+    const apiCsp = (await fetch(BASE + "/api/auth/nonce")).headers.get("content-security-policy");
+    assert.equal(apiCsp, "default-src 'none'; frame-ancestors 'none'");
+    const unknown = await fetch(BASE + "/api/does-not-exist");
+    assert.equal(unknown.status, 404);
+    assert.match(unknown.headers.get("content-type") ?? "", /application\/json/);
     assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(page.headers.get("cross-origin-opener-policy"), "same-origin-allow-popups");
+    assert.equal(page.headers.get("cross-origin-resource-policy"), "same-origin");
+    assert.equal(page.headers.get("x-permitted-cross-domain-policies"), "none");
     assert.equal(page.headers.get("x-powered-by"), null);
     const res = await api("/api/auth/nonce");
     assert.equal(res.headers.get("cache-control"), "no-store");
@@ -184,6 +202,34 @@ async function main() {
     assert.equal(res.status, 201);
     assert.equal(res.body.created.length, 3);
     assert.deepEqual(res.body.errors.map((e: { row: number }) => e.row), [4]);
+  });
+
+  await step("rejects NUL and control characters instead of crashing (fuzzing regression)", async () => {
+    for (const body of [
+      { name: "Nul", wallet: RECIPIENTS[0], amount: "1", token: "USDC", address: "a\u0000b" },
+      { name: "Nul", wallet: RECIPIENTS[0], amount: "1", token: "USDC", taxId: "X\u0000" },
+      { name: "Bell\u0007", wallet: RECIPIENTS[0], amount: "1", token: "USDC" },
+    ]) {
+      const res = await api("/api/employees", { body });
+      assert.equal(res.status, 400, JSON.stringify(res.body));
+    }
+    for (const body of [{ taxId: "GB\u0000" }, { invoiceNote: "a\u0000" }, { address: "x\u0001y" }]) {
+      assert.equal((await api("/api/me", { method: "PATCH", body })).status, 400);
+    }
+  });
+
+  await step("refuses cross-site writes even with a valid session (CSRF defence in depth)", async () => {
+    const body = JSON.stringify({ name: "CSRF", wallet: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955", amount: "1", token: "USDC" });
+    // The cookie is SameSite=Lax, so a browser wouldn't send it cross-site; this checks the second layer.
+    const forms = await api("/api/employees", { body: JSON.parse(body), headers: { origin: "https://evil.example" } });
+    assert.equal(forms.status, 403);
+    assert.equal((await api("/api/employees", { body: JSON.parse(body), headers: { "sec-fetch-site": "cross-site" } })).status, 403);
+    const plain = await fetch(BASE + "/api/employees", { method: "POST", headers: { "content-type": "text/plain" }, body });
+    assert.equal(plain.status, 415);
+    // Same-site requests (the app itself) still work.
+    assert.equal((await api("/api/employees", { body: JSON.parse(body), headers: { origin: BASE } })).status, 201);
+    const added = (await api("/api/employees")).body.employees.find((e: { name: string }) => e.name === "CSRF");
+    assert.equal((await api(`/api/employees/${added.id}`, { method: "DELETE", headers: { origin: BASE } })).status, 200);
   });
 
   await step("refuses a second person with the same wallet", async () => {

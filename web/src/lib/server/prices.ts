@@ -49,7 +49,7 @@ export async function ratesAt(
       const answer = round[1];
       if (answer > 0n) out[token] = { rate: formatUnits(answer, decimals), source: `Chainlink ${token}/USD feed ${feed} at block ${blockNumber}` };
     } catch (err) {
-      console.error(`price feed read failed for ${token} on ${chainId}`, err);
+      console.error("price feed read failed for %s on chain %d", token, chainId, err);
     }
   }
   return out;

@@ -1,0 +1,47 @@
+{
+ "templates": 10688,
+ "requests": 19743,
+ "target": "http://localhost:3000",
+ "findings": [
+  {
+   "template-id": "http-missing-security-headers",
+   "matcher-name": "x-frame-options",
+   "matched-at": "http://localhost:3000",
+   "timestamp": "2026-10-22T11:45:54.495814969Z",
+   "severity": "info",
+   "name": "HTTP Missing Security Headers"
+  },
+  {
+   "template-id": "http-missing-security-headers",
+   "matcher-name": "x-permitted-cross-domain-policies",
+   "matched-at": "http://localhost:3000",
+   "timestamp": "2026-10-22T11:45:54.527621267Z",
+   "severity": "info",
+   "name": "HTTP Missing Security Headers"
+  },
+  {
+   "template-id": "http-missing-security-headers",
+   "matcher-name": "cross-origin-embedder-policy",
+   "matched-at": "http://localhost:3000",
+   "timestamp": "2026-10-22T11:45:54.550601324Z",
+   "severity": "info",
+   "name": "HTTP Missing Security Headers"
+  },
+  {
+   "template-id": "http-missing-security-headers",
+   "matcher-name": "cross-origin-opener-policy",
+   "matched-at": "http://localhost:3000",
+   "timestamp": "2026-10-22T11:45:54.591440247Z",
+   "severity": "info",
+   "name": "HTTP Missing Security Headers"
+  },
+  {
+   "template-id": "http-missing-security-headers",
+   "matcher-name": "cross-origin-resource-policy",
+   "matched-at": "http://localhost:3000",
+   "timestamp": "2026-10-22T11:45:54.614873621Z",
+   "severity": "info",
+   "name": "HTTP Missing Security Headers"
+  }
+ ]
+}

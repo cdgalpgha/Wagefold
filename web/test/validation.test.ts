@@ -77,3 +77,16 @@ describe("addresses", () => {
     expect(orgPatchInput.safeParse({ address: "a\n".repeat(50) + "x" }).success).toBe(false);
   });
 });
+
+describe("control characters", () => {
+  const base = { name: "A", wallet: "0xdc582558deb4e0ee768ba37968af85af7b0639a8", amount: "1", token: "USDC" };
+  it("rejects NUL and other control characters, but keeps line breaks in addresses", () => {
+    expect(employeeInput.safeParse({ ...base, address: "1 Road\nTown" }).success).toBe(true);
+    expect(employeeInput.safeParse({ ...base, address: "a\u0000b" }).success).toBe(false);
+    expect(employeeInput.safeParse({ ...base, address: "a\u001bb" }).success).toBe(false);
+    expect(employeeInput.safeParse({ ...base, taxId: "X\u0000" }).success).toBe(false);
+    expect(employeeInput.safeParse({ ...base, email: "a\u0000@b.co" }).success).toBe(false);
+    expect(orgPatchInput.safeParse({ invoiceNote: "thanks\u0000" }).success).toBe(false);
+    expect(orgPatchInput.safeParse({ invoiceNote: "line\nbreak" }).success).toBe(false);
+  });
+});
