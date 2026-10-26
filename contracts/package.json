@@ -17,7 +17,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.10.2",
     "dotenv": "^16.4.7",
-    "hardhat": "^2.29.1",
+    "hardhat": "^3.21.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
     "viem": "^2.57.8"
