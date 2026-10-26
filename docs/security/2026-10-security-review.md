@@ -1,5 +1,49 @@
 # Security review, October 2026
 
+Two passes: an automated review with scanners (22 October, below the first divider) and a manual audit of the code and repository (26 October, first). Each issue found is fixed and covered by an end-to-end test that performs the attack.
+
+## Manual code audit, 26 October 2026
+
+A line-by-line read of sign-in, sessions, permissions, every API route, the payroll and approval state machine, the contract, the browser send flow and the repository setup, looking for what scanners can't see: business-logic flaws, race conditions and trust boundaries.
+
+**Result:** two ways a payroll could be paid twice, a gap in four-eyes control over payee wallets, and two authentication weaknesses. All fixed and tested. The tools found nothing new after the fixes.
+
+| # | Finding | Severity | Fix | Test |
+|---|---|---|---|---|
+| 1 | **Two payrolls could be open at once.** The one-run-at-a-time rule was only checked when a draft was created. Two people could each prepare a draft, send both for approval, and have both approved and sent: everyone paid twice | High | The check now runs in the same statement that sends a draft for approval (or to the treasury), backed by a unique index on open runs per company, so concurrent requests can't both win | `only one payroll can wait for approval at a time, even from two drafts` |
+| 2 | **The contract could pay the same run twice.** A retried transaction, a double click, or a payment the browser never reported (so the run still looked unsent) could pay the same list again | Medium | `WagefoldPayroll` records `paidBlock[payer][runId]` and reverts with `AlreadyPaid` on a second attempt, keyed by payer so nobody else can block a run. The app checks it before sending, and the server uses it to find a payment the browser never reported | Contract: `pays a run once per treasury`, `doesn't let someone else block a run`. End-to-end: `the contract pays a run once`, `a payment the browser never reported is found on-chain and verified` |
+| 3 | **An approver could approve paying a wallet they had just changed.** The preparer couldn't approve their own run, but an admin could edit someone's wallet in People and then approve the payroll that pays it: the classic payroll fraud pattern | Medium | Approving is refused if any wallet in the run was added or changed by the approver since the last paid payroll (from the append-only activity log; bulk imports now log every wallet) | `whoever changes a payee's wallet can't approve the payroll that pays it` |
+| 4 | **Sign-in messages could be replayed.** The nonce cookie wasn't signed or tracked, and message freshness wasn't enforced. Anyone who obtained a signed sign-in message could set the cookie themselves and sign in as that wallet | Medium | Nonces live in a signed cookie (only server-issued nonces work), are consumed on first use, and the message must be issued in the last ten minutes and expire within ten | `a signed sign-in works once, must be fresh, and only with a nonce this server issued` |
+| 5 | **Sessions couldn't be revoked.** Sessions were stateless 7-day tokens: signing out cleared the browser's cookie, but a copied cookie kept working | Medium | Sessions are stored on the server (3 days). Signing out, switching company or being removed from the team revokes them | `signing out ends the session on the server, even for a copied cookie` |
+| 6 | **Request bodies were read fully before the 2 MB check** | Low (memory DoS) | Bodies are read in chunks and abandoned past 2 MB | `rejects NUL and control characters...` (2.5 MB body) |
+| 7 | **A run could get stuck as "sent" forever** if the wallet replaced the transaction (speed-up) or the browser closed before reporting it. That blocked every future payroll and invited a manual re-send | Low (availability) | The server finds the real transaction through `paidBlock`; the owner can safely send the same run again because it can only be paid once | As 2 |
+| 8 | **A run was marked paid on the first receipt** | Low | Waits 3 blocks on Base (1 on Base Sepolia) before recording it as paid and issuing invoices | n/a (local chain uses 0) |
+| 9 | **A short `SESSION_SECRET` was accepted in production** | Low | At least 32 characters required | n/a |
+| 10 | **New dependency advisories since the first pass:** Next.js remote code execution in the image optimizer (GHSA-2464-fhr4-w9xw, critical) and a Server Actions DoS; zod memory exhaustion (GHSA-mrhx-c7xc-m3w5, high) | Critical / high | Next.js 15.5.28; the app's own validation moved to zod 4.6.7. Wallet SDKs still bundle zod 3 in the browser (accepted, below) | Build and all suites pass |
+| 11 | **Repository:** no CI, no vulnerability reporting policy, no dependency updates | Process | GitHub Actions runs typecheck, unit tests, build, contract tests, gitleaks, Semgrep and Slither on every push; Dependabot weekly; `SECURITY.md` | n/a |
+
+### Re-scan after the fixes
+
+| Tool | Result |
+|---|---|
+| End-to-end attack suite | 40/40 (5 new checks) |
+| Unit tests / contract tests | 53/53, 9/9 (2 new) |
+| OWASP ZAP authenticated API active scan | 113 passed, 0 failed, 0 server errors ([report](reports/zap-api-authenticated.html)) |
+| OWASP ZAP baseline (pages) | 58 passed, 0 failed; 3 warnings, all previously accepted: CSP `https:` for wallet relays, no integrity hash on Google Fonts, an informational note ([report](reports/zap-baseline.html)) |
+| Semgrep (236 rules) | 0 findings |
+| Slither (102 detectors) | 0 findings |
+| gitleaks (history and working tree) | No secrets |
+| npm audit (production) | Next.js fixed; remaining: zod 3 inside wallet SDKs (browser only) |
+
+### Accepted since this pass
+
+- **zod 3 inside wallet SDKs** (Coinbase CDP SDK, Reown/WalletConnect AppKit). No patched 3.x exists and forcing zod 4 would break those SDKs. They run in the browser and parse wallet data, not requests to the server, which uses zod 4.6.7. Revisit when the SDKs upgrade.
+- **Recipients of an approved run aren't re-approved after a wallet change in People**: the run is a snapshot, so changes in People don't affect a run in flight (tested since the first pass).
+
+---
+
+## Automated review, 22 October 2026
+
 Automated and manual testing of Wagefold (web app, API and `WagefoldPayroll` contract) against a local stack: Hardhat chain, production build of the app (`next start`), embedded Postgres, seeded with a company, a team in every role, paid and pending payroll runs, invoices and an activity log.
 
 **Result:** no exploitable vulnerability found. The tools surfaced two real bugs, two hardening gaps and vulnerable dependencies, all fixed and covered by regression tests. Remaining items are listed under accepted risks with the reason.

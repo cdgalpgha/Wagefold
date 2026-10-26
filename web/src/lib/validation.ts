@@ -35,7 +35,7 @@ export const employeeInput = z.object({
       }
       return n;
     }),
-  token: z.enum(TOKEN_SYMBOLS, { errorMap: () => ({ message: "Token must be USDC or USDT." }) }),
+  token: z.enum(TOKEN_SYMBOLS, { error: "Token must be USDC or USDT." }),
   email: z
     .string()
     .trim()
@@ -140,7 +140,7 @@ export const memberInput = z
       .refine((v) => v.toLowerCase() !== zeroAddress, "That is the zero address.")
       .transform((v) => getAddress(v)),
     name: z.string().trim().min(1, "Add a name.").max(80, "Keep the name under 80 characters.").refine((v) => oneLine(v), "The name must be one line."),
-    role: z.enum(ASSIGNABLE_ROLES, { errorMap: () => ({ message: "Role must be admin, preparer or viewer." }) }),
+    role: z.enum(ASSIGNABLE_ROLES, { error: "Role must be admin, preparer or viewer." }),
   })
   .strict();
 

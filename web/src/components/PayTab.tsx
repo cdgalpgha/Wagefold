@@ -19,7 +19,8 @@ import { useSession } from "@/hooks/useSession";
 import { payDayLabel, scheduleStatus } from "@/lib/schedule";
 import { useEmployees } from "./PeopleTab";
 import { copyText, useToast } from "./toast";
-import { Badge, Button, Card, CheckIcon, CopyIcon, shortAddress, Skeleton, Spinner, XIcon } from "./ui";
+import { BRAND_LOGOS } from "./brand-logos";
+import { Badge, Button, Card, CheckIcon, CopyIcon, Eyebrow, shortAddress, Skeleton, Spinner, XIcon } from "./ui";
 
 export function PayTab({
   onOpenPeople,
@@ -176,104 +177,147 @@ function PayHome({
 
   if (employees.isLoading) {
     return (
-      <div className="mx-auto flex max-w-3xl flex-col gap-6" aria-busy="true">
-        <Card className="flex flex-col gap-5 rounded-[20px] p-9">
-          <Skeleton className="h-4 w-24" />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]" aria-busy="true">
+        <Card className="flex flex-col gap-5 rounded-[20px] p-8">
+          <Skeleton className="h-3 w-28" />
           <Skeleton className="h-11 w-72" />
-          <Skeleton className="h-5 w-56" />
-          <Skeleton className="h-14 w-44 rounded-xl" />
+          <Skeleton className="h-[52px] w-44 rounded-xl" />
+        </Card>
+        <Card className="flex flex-col gap-4 p-5">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-1.5 w-full" />
         </Card>
       </div>
     );
   }
 
+  const cycle =
+    session.org.payDay === null
+      ? "Payroll"
+      : `${scheduleStatus(new Date(), session.org.payDay, null).next.toLocaleDateString(undefined, { month: "long" })} payroll`;
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      {rejected && !openRun && (
-        <div role="status" className="rounded-2xl border border-bad-line bg-bad-soft p-4 text-sm text-bad-text">
-          <span className="font-semibold">{nameOf(rejected.rejection?.by)} sent the last payroll back.</span>{" "}
-          {rejected.rejection?.reason ? `“${rejected.rejection.reason}”` : ""} Fix it in People, then run payroll again.
-        </div>
-      )}
-      {openRun ? (
-        <OpenRunCard
-          me={session}
-          run={openRun}
-          busy={preparing}
-          onOpen={(mode) => onOpenRun(openRun, mode)}
-          onCancel={() => onCancelRun(openRun)}
-          onRecheck={() => onRecheck(openRun)}
-        />
-      ) : (
-      <Card className="flex flex-col gap-6 rounded-[20px] p-6 sm:p-9">
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-ink-2">Payroll</span>
-          <h1 className="text-[34px] font-semibold leading-tight tracking-tight sm:text-[40px]">
-            Pay {list.length} {list.length === 1 ? "person" : "people"}
-          </h1>
-          <p className="tabular text-lg text-ink-2">{totalsLabel(sumByToken(list))}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          {canPrepare ? (
-            <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
-              {preparing ? <Spinner /> : null}
-              {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
-            </Button>
-          ) : (
-            <span className="rounded-xl bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
-          )}
-          <span className="max-w-[42ch] text-sm leading-relaxed text-ink-2">
-            {list.length === 0 ? "Add your team first. " : "Names, wallets and amounts come straight from "}
-            <button type="button" onClick={onOpenPeople} className="text-brand underline">People</button>.
-            {canPrepare && session.org.approvalsRequired > 0 && (
-              <> It goes to {session.org.approvalsRequired} approver{session.org.approvalsRequired === 1 ? "" : "s"} before the treasury can send it.</>
-            )}
-          </span>
-        </div>
-        {short.length > 0 && (
-          <p role="alert" className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
-            Top up {short.map((t) => `${formatAmount(totals[t] - balances[t]!)} ${t}`).join(" and ")} before paying everyone.
-          </p>
+    <div className={`grid items-start gap-6 ${used.length > 0 ? "lg:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
+      <div className="flex min-w-0 flex-col gap-6">
+        {rejected && !openRun && (
+          <div role="status" className="rounded-2xl border border-bad-line bg-bad-soft p-4 text-sm text-bad-text">
+            <span className="font-semibold">{nameOf(rejected.rejection?.by)} sent the last payroll back.</span>{" "}
+            {rejected.rejection?.reason ? `“${rejected.rejection.reason}”` : ""} Fix it in People, then run payroll again.
+          </div>
         )}
-      </Card>
-      )}
-      {<Schedule payDay={session.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />}
+        {openRun ? (
+          <OpenRunCard
+            me={session}
+            run={openRun}
+            busy={preparing}
+            onOpen={(mode) => onOpenRun(openRun, mode)}
+            onCancel={() => onCancelRun(openRun)}
+            onRecheck={() => onRecheck(openRun)}
+          />
+        ) : (
+          <Card className="overflow-hidden rounded-[20px]">
+            <div className="flex flex-col gap-7 p-6 sm:p-8">
+              <div className="flex flex-col gap-2.5">
+                <Eyebrow>{cycle}</Eyebrow>
+                <h1 className="text-[34px] font-semibold leading-[1.08] tracking-[-0.025em] sm:text-[44px]">
+                  Pay {list.length} {list.length === 1 ? "person" : "people"}
+                </h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                {canPrepare ? (
+                  <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
+                    {preparing ? <Spinner /> : null}
+                    {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
+                  </Button>
+                ) : (
+                  <span className="rounded-xl bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
+                )}
+                <span className="max-w-[44ch] text-sm leading-relaxed text-ink-2">
+                  {list.length === 0 ? "Add your team first. " : "Names, wallets and amounts come straight from "}
+                  <button type="button" onClick={onOpenPeople} className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+                    People
+                  </button>
+                  .
+                  {canPrepare && session.org.approvalsRequired > 0 && (
+                    <> It goes to {session.org.approvalsRequired} approver{session.org.approvalsRequired === 1 ? "" : "s"} before the treasury can send it.</>
+                  )}
+                </span>
+              </div>
+              {short.length > 0 && (
+                <p role="alert" className="rounded-xl border border-warn-line bg-warn-soft px-4 py-3 text-sm text-warn">
+                  Top up {short.map((t) => `${formatAmount(totals[t] - balances[t]!)} ${t}`).join(" and ")} before paying everyone.
+                </p>
+              )}
+            </div>
+            {used.length > 0 && (
+              <dl className="grid grid-cols-2 border-t border-line bg-surface-2 sm:flex sm:divide-x sm:divide-line">
+                {used.map((t) => (
+                  <div key={t} className="flex flex-col gap-1 px-6 py-4 sm:flex-1 sm:px-8">
+                    <dt><Eyebrow>{t}</Eyebrow></dt>
+                    <dd className="tabular text-[17px] font-semibold tracking-[-0.01em]">{formatAmount(totals[t])}</dd>
+                  </div>
+                ))}
+                <div className="flex flex-col gap-1 px-6 py-4 sm:flex-1 sm:px-8">
+                  <dt><Eyebrow>Approvals</Eyebrow></dt>
+                  <dd className="text-[17px] font-semibold tracking-[-0.01em]">
+                    {session.org.approvalsRequired === 0 ? "None" : `${session.org.approvalsRequired} required`}
+                  </dd>
+                </div>
+              </dl>
+            )}
+          </Card>
+        )}
+        <Schedule payDay={session.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />
+        {last && (
+          <section aria-labelledby="last-h" className="flex flex-col gap-3">
+            <h2 id="last-h" className="text-[15px] font-semibold">Last payroll</h2>
+            <Card className="flex flex-wrap items-center gap-4 px-5 py-4">
+              <span className="flex flex-1 flex-col gap-0.5">
+                <span className="text-[15px] font-medium">{new Date(last.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</span>
+                <span className="text-[13px] text-ink-2">{last.recipientCount} people</span>
+              </span>
+              <span className="tabular text-sm font-medium">{totalsLabel(last.totals)}</span>
+              <Badge tone="good">Paid</Badge>
+            </Card>
+          </section>
+        )}
+      </div>
       {used.length > 0 && (
-        <section aria-labelledby="coverage-h" className="flex flex-col gap-3">
-          <h2 id="coverage-h" className="text-base font-semibold">Treasury</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <aside aria-labelledby="coverage-h" className="flex flex-col gap-3 lg:sticky lg:top-24">
+          <div className="flex items-baseline justify-between">
+            <h2 id="coverage-h" className="text-[15px] font-semibold">Treasury</h2>
+            <span className="text-xs text-ink-3">Balance now</span>
+          </div>
+          <Card className="divide-y divide-line">
             {used.map((t) => {
               const bal = balances[t];
-              const runsCovered = bal === undefined ? undefined : Number(bal / totals[t]);
+              const covered = bal === undefined ? undefined : Number(bal / totals[t]);
+              const tone = covered === undefined ? "bg-line" : covered < 1 ? "bg-bad" : covered < 2 ? "bg-warn-dot" : "bg-good-dot";
               return (
-                <Card key={t} className="flex flex-col gap-1 px-5 py-4">
-                  <span className="text-sm text-ink-2">{t} balance</span>
-                  <span className="tabular font-mono text-xl font-medium">{bal === undefined ? "…" : formatAmount(bal)}</span>
-                  <span className={`text-[13px] ${runsCovered !== undefined && runsCovered < 1 ? "font-medium text-warn" : "text-ink-2"}`}>
-                    {runsCovered === undefined
+                <div key={t} className="flex flex-col gap-3.5 p-5">
+                  <div className="flex items-center gap-3">
+                    <img src={BRAND_LOGOS[t === "USDC" ? "usdc" : "usdt"].src} alt="" width={28} height={28} className="h-7 w-7" />
+                    <span className="text-sm font-medium">{t}</span>
+                    <span className="tabular ml-auto text-[20px] font-semibold tracking-[-0.02em]">{bal === undefined ? "…" : formatAmount(bal)}</span>
+                  </div>
+                  <div className="flex gap-1" aria-hidden="true">
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <span key={i} className={`h-1.5 flex-1 rounded-full ${covered !== undefined && i < Math.min(covered, 6) ? tone : "bg-line"}`} />
+                    ))}
+                  </div>
+                  <span className={`text-[13px] ${covered !== undefined && covered < 1 ? "font-medium text-bad-text" : "text-ink-2"}`}>
+                    {covered === undefined
                       ? "Checking balance…"
-                      : runsCovered < 1
+                      : covered < 1
                         ? `Short by ${formatAmount(totals[t] - bal!)} for one payroll`
-                        : `Covers ${runsCovered} ${runsCovered === 1 ? "payroll" : "payrolls"} at ${formatAmount(totals[t])} each`}
+                        : `Covers ${covered} ${covered === 1 ? "payroll" : "payrolls"} at ${formatAmount(totals[t])} each`}
                   </span>
-                </Card>
+                </div>
               );
             })}
-          </div>
-        </section>
-      )}
-      {last && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold">Last payroll</h2>
-          <Card className="flex flex-wrap items-center gap-4 px-5 py-4">
-            <span className="flex flex-1 flex-col gap-0.5">
-              <span className="text-[15px] font-medium">{new Date(last.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</span>
-              <span className="text-[13px] text-ink-2">{last.recipientCount} people</span>
-            </span>
-            <span className="tabular text-sm">{totalsLabel(last.totals)}</span>
-            <span className="text-[13px] font-semibold text-good">Paid</span>
           </Card>
-        </section>
+        </aside>
       )}
     </div>
   );
@@ -309,14 +353,14 @@ function Schedule({ payDay, lastPaidAt, onOpenSettings }: { payDay: number | nul
             : `${payDayLabel(payDay)}. Wagefold never sends on its own: you review and sign each run.`}
         </span>
       </span>
-      <button type="button" onClick={onOpenSettings} className="min-h-10 text-sm font-medium text-brand">Change</button>
+      <Button variant="secondary" onClick={onOpenSettings}>Change</Button>
     </Card>
   );
 }
 
 function CalendarIcon() {
   return (
-    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-soft text-brand-dark" aria-hidden="true">
+    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] border border-line bg-surface-2 text-ink-2" aria-hidden="true">
       <svg className="h-4.5 w-4.5" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
     </span>
   );
@@ -456,7 +500,7 @@ function Review({
         {used.map((s) => (
           <Card key={s} className="flex flex-col gap-1 p-5">
             <span className="text-sm text-ink-2">{s} to send</span>
-            <span className="tabular font-mono text-[26px] font-medium tracking-tight">{formatAmount(totals[s])}</span>
+            <span className="tabular text-[26px] font-semibold tracking-[-0.02em]">{formatAmount(totals[s])}</span>
             <span className="text-[13px] text-ink-2">
               {items.filter((i) => i.token === s).length} people · {balances[s] === undefined ? "…" : formatAmount(balances[s]!)} available
             </span>
@@ -464,7 +508,7 @@ function Review({
         ))}
         <Card className="flex flex-col gap-1 p-5">
           <span className="text-sm text-ink-2">Transactions</span>
-          <span className="font-mono text-[26px] font-medium tracking-tight">1</span>
+          <span className="tabular text-[26px] font-semibold tracking-[-0.02em]">1</span>
           <span className="text-[13px] text-ink-2">
             Network fee about {fee === undefined ? "…" : `${formatEth(fee)} ETH`}, plus a token approval if your wallet needs one
           </span>
@@ -574,7 +618,7 @@ function Review({
                     {shortAddress(i.wallet)} <CopyIcon className="h-3.5 w-3.5" />
                   </button>
                 </span>
-                <span className="tabular min-w-[130px] text-right font-mono">
+                <span className="tabular min-w-[130px] text-right font-medium">
                   {formatAmount(i.amount)} {i.token}
                 </span>
               </li>
@@ -842,7 +886,7 @@ function Done({ run, items, onBack, onOpenHistory }: { run: Run; items: RunItem[
             <CheckIcon className="h-3.5 w-3.5 text-good" />
             <span className="flex-1 font-medium">{i.name}</span>
             <span className="font-mono text-[13px] text-ink-2">{shortAddress(i.wallet)}</span>
-            <span className="tabular min-w-[130px] text-right font-mono">{formatAmount(i.amount)} {i.token}</span>
+            <span className="tabular min-w-[130px] text-right font-medium">{formatAmount(i.amount)} {i.token}</span>
           </div>
         ))}
       </Card>

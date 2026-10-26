@@ -44,6 +44,8 @@ export async function POST(req: Request) {
       await logActivity(session.orgId, session.address, "people_imported", {
         count: created.length,
         people: created.slice(0, 50).map((e) => ({ name: e.name, wallet: e.wallet, amount: e.amount, token: e.token })),
+        // Every imported wallet, so approvals can tell who added it (see walletsChangedBy).
+        wallets: created.map((e) => e.wallet),
       });
     }
     return json({ created, errors }, created.length ? 201 : 400);

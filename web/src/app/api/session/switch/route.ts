@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fail, json, readJson, requireMember } from "@/lib/server/http";
 import { roleOf } from "@/lib/server/repo";
-import { createSessionCookie } from "@/lib/server/session";
+import { createSessionCookie, endSession } from "@/lib/server/session";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -12,6 +12,7 @@ export async function POST(req: Request) {
   const body = (await readJson(req)) as { orgId?: unknown } | null;
   const orgId = typeof body?.orgId === "string" && UUID_RE.test(body.orgId) ? body.orgId : null;
   if (!orgId || !(await roleOf(orgId, session.address))) return fail("You're not on that company's team.", 403);
+  await endSession();
   await createSessionCookie({ address: session.address, orgId, chainId: session.chainId });
   return json({ ok: true });
 }

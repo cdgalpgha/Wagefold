@@ -29,6 +29,13 @@ export default {
         logo: { a: v("logo-a"), b: v("logo-b") },
         tone: { 1: v("tone-1"), 2: v("tone-2"), 3: v("tone-3"), 4: v("tone-4"), 5: v("tone-5"), 6: v("tone-6") },
       },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        raised: "var(--shadow-raised)",
+        pop: "var(--shadow-pop)",
+        button: "var(--shadow-button)",
+      },
+      transitionTimingFunction: { out: "cubic-bezier(.2,.7,.2,1)" },
       fontFamily: {
         sans: ["Geist", "system-ui", "sans-serif"],
         mono: ["'Geist Mono'", "ui-monospace", "monospace"],

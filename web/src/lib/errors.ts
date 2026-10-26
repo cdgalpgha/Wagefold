@@ -7,5 +7,6 @@ export function friendlyError(err: unknown): string {
   }
   if (/insufficient funds/i.test(text)) return "Your wallet doesn't have enough ETH on this network to pay the network fee.";
   if (/ERC20InsufficientBalance|exceeds balance/i.test(text)) return "The treasury doesn't hold enough of a token for this run.";
+  if (/AlreadyPaid/.test(text)) return "This payroll was already paid from your treasury. Nobody was paid twice.";
   return e?.shortMessage ?? e?.message ?? "Something went wrong. Please try again.";
 }

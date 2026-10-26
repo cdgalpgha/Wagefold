@@ -126,6 +126,23 @@ function member(action: Action = "view") {
   return { ...s, role };
 }
 
+/** Same rule as the server: wallets this person added or changed in People since the last paid run. */
+function walletsChangedBy(orgId: string, actor: string): Set<string> {
+  const since = state.app.runs
+    .filter((r) => r.orgId === orgId && r.status === "confirmed")
+    .reduce((max, r) => ((r.confirmedAt ?? "") > max ? r.confirmedAt ?? "" : max), "");
+  const out = new Set<string>();
+  const add = (w: unknown) => typeof w === "string" && out.add(w.toLowerCase());
+  for (const a of state.app.activity) {
+    if (a.orgId !== orgId || !same(a.actor, actor) || a.at <= since) continue;
+    const d = a.detail;
+    if (a.action === "person_added") add(d.wallet);
+    if (a.action === "person_updated") add((d.changes as { wallet?: unknown[] } | undefined)?.wallet?.[1]);
+    if (a.action === "people_imported" && Array.isArray(d.wallets)) d.wallets.forEach(add);
+  }
+  return out;
+}
+
 function log(orgId: string, actor: string, action: ActivityAction, detail: Record<string, unknown> = {}) {
   state.app.activity.push({ id: String(state.app.activity.length + 1), orgId, at: new Date().toISOString(), actor, action, detail });
 }
@@ -337,7 +354,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
             errors.push({ row: i + 1, error: (err as Error).message });
           }
         });
-        if (created.length) log(s.orgId, s.address, "people_imported", { count: created.length });
+        if (created.length) log(s.orgId, s.address, "people_imported", { count: created.length, wallets: created.map((e) => e.wallet) });
         persist();
         return [created.length ? 201 : 400, { created, errors }];
       }
@@ -438,6 +455,9 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     if (parts[2] === "request") {
       member("prepare");
       if (run.status !== "draft" || !same(run.createdBy, s.address)) throw new HttpError(409, "Only the person who prepared this draft can send it for approval, and only once.");
+      if (state.app.runs.some((r) => r.orgId === s.orgId && r.id !== run.id && ["pending", "approved", "submitted"].includes(r.status))) {
+        throw new HttpError(409, "Another payroll is already waiting for approval or being sent. Finish or cancel it first.");
+      }
       run.verifiedWallets = verifiedIn((body as { verifiedWallets?: unknown })?.verifiedWallets, items);
       Object.assign(run, { requestedAt: new Date().toISOString(), status: org.approvalsRequired === 0 ? "approved" : "pending" });
       log(s.orgId, s.address, "run_requested", { runId: run.id, recipients: run.recipientCount, totals: run.totals, verifiedWallets: run.verifiedWallets, status: run.status });
@@ -449,6 +469,11 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
       member("approve");
       if (!["pending", "approved"].includes(run.status)) throw new HttpError(409, "This payroll isn't waiting for approval.");
       if (same(run.createdBy, s.address)) throw new HttpError(403, "You prepared this payroll, so someone else has to approve it.");
+      const changed = walletsChangedBy(s.orgId, s.address);
+      const touched = items.filter((i) => changed.has(i.wallet.toLowerCase()));
+      if (touched.length) {
+        throw new HttpError(403, `You added or changed the wallet for ${touched.slice(0, 3).map((i) => i.name).join(", ")} since the last payroll, so someone else has to approve this one.`);
+      }
       const message = messageFor(run, s.address);
       if (method === "GET") return [200, { message }];
       const signature = (body as { signature?: string })?.signature;
@@ -489,7 +514,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
       if (!same(org.ownerAddress, s.address)) throw new HttpError(403, "Only the treasury wallet can send payroll.");
       const txHash = (body as { txHash?: string })?.txHash;
       if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new HttpError(400, "Missing transaction hash.");
-      const sendable = run.status === "pending" || run.status === "approved" || (run.status === "draft" && org.approvalsRequired === 0);
+      const sendable = ["pending", "approved", "submitted"].includes(run.status) || (run.status === "draft" && org.approvalsRequired === 0);
       if (!sendable || approvals().length < org.approvalsRequired) {
         throw new HttpError(409, `This payroll needs ${org.approvalsRequired} approval${org.approvalsRequired === 1 ? "" : "s"} before it can be sent.`);
       }

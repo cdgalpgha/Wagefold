@@ -49,6 +49,8 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
       );
       return { title: `${changes.wallet ? "Changed the wallet of" : "Edited"} ${str(d.name)}`, detail: parts.join(" · "), tone: changes.wallet ? "warn" : "neutral" };
     }
+    case "run_tx_found":
+      return { title: "Found the payroll transaction on-chain", detail: `Transaction ${short(d.txHash)}`, tone: "neutral" };
     case "run_sent": {
       const verified = Array.isArray(d.verifiedWallets) ? d.verifiedWallets.length : 0;
       return {

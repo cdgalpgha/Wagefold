@@ -148,4 +148,25 @@ describe("WagefoldPayroll", () => {
     console.log(`      100 separate transfers: ${separate} gas · one Wagefold run: ${batched} gas`);
     assert.ok(batched < separate, "one run must beat separate transfers");
   });
+  it("pays a run once per treasury: a retry or replay reverts", async () => {
+    const { payroll, usdc, treasury, alice, publicClient } = await loadFixture(deployFixture);
+    await usdc.write.approve([payroll.address, usd("200")]);
+    const run = [{ token: usdc.address, to: alice.account.address, amount: usd("100") }];
+    const hash = await payroll.write.pay([RUN_ID, run]);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    assert.equal(await payroll.read.paidBlock([treasury.account.address, RUN_ID]), receipt.blockNumber);
+    await expectRevert(payroll.write.pay([RUN_ID, run]), "AlreadyPaid");
+    assert.equal(await usdc.read.balanceOf([alice.account.address]), usd("100"), "paid exactly once");
+  });
+
+  it("doesn't let someone else block a run by paying its id first", async () => {
+    const { payroll, usdc, treasury, alice, attacker } = await loadFixture(deployFixture);
+    await usdc.write.mint([attacker.account.address, usd("1")]);
+    await usdc.write.approve([payroll.address, usd("1")], { account: attacker.account });
+    await payroll.write.pay([RUN_ID, [{ token: usdc.address, to: attacker.account.address, amount: usd("1") }]], { account: attacker.account });
+    await usdc.write.approve([payroll.address, usd("100")]);
+    await payroll.write.pay([RUN_ID, [{ token: usdc.address, to: alice.account.address, amount: usd("100") }]]);
+    assert.equal(await usdc.read.balanceOf([alice.account.address]), usd("100"));
+    assert.ok((await payroll.read.paidBlock([treasury.account.address, RUN_ID])) > 0n);
+  });
 });

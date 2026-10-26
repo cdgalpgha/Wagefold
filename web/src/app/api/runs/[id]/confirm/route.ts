@@ -1,14 +1,36 @@
 import { NextResponse } from "next/server";
-import { parseEventLogs, type Hex } from "viem";
+import { parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
 import { payrollAbi } from "@/lib/abi";
 import { getChainConfig, TOKEN_SYMBOLS } from "@/lib/chains";
 import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, requireMember } from "@/lib/server/http";
 import { ratesAt } from "@/lib/server/prices";
-import { ensureInvoices, getOrganization, getRun, logActivity, markRunResult, type RunRecord } from "@/lib/server/repo";
+import { ensureInvoices, getOrganization, getRun, logActivity, markRunResult, recordRunTransaction, type RunRecord } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
+
+/** Blocks to wait on top of the payment's block before calling it paid, so a reorg can't undo a "paid" record. */
+const CONFIRMATIONS: Record<number, bigint> = { 8453: 3n, 84532: 1n };
+
+/** The transaction in which the treasury paid this run, read from the contract itself, or null. */
+async function paidOnChain(client: PublicClient, payroll: Address, treasury: Address, runId: Hex): Promise<Hex | null> {
+  try {
+    const block = await client.readContract({ address: payroll, abi: payrollAbi, functionName: "paidBlock", args: [treasury, runId] });
+    if (!block) return null;
+    const logs = await client.getContractEvents({
+      address: payroll,
+      abi: payrollAbi,
+      eventName: "PayrollPaid",
+      args: { payer: treasury, runId },
+      fromBlock: block,
+      toBlock: block,
+    });
+    return logs[0]?.transactionHash ?? null;
+  } catch {
+    return null; // an older contract without paidBlock, or the RPC failed: rely on the reported hash
+  }
+}
 
 /**
  * Reads the transaction from the chain and only marks the run paid if the payroll contract paid
@@ -20,16 +42,36 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (session instanceof NextResponse) return session;
   const found = await getRun(session.orgId, params.id).catch(() => null);
   if (!found) return fail("Payroll run not found.", 404);
-  const { run, items } = found;
+  let { run } = found;
+  const { items } = found;
   if (run.status === "confirmed" || run.status === "failed") return json({ run });
-  if (run.status !== "submitted" || !run.txHash) return fail("This run hasn't been sent yet.", 409);
+  if (run.status !== "submitted" && run.status !== "approved") return fail("This run hasn't been sent yet.", 409);
 
   const cfg = getChainConfig(run.chainId);
   const client = serverClient(run.chainId);
+  const org = await getOrganization(session.orgId);
   if (!cfg || !client) return fail("This network is no longer configured.", 500);
+  if (!org) return fail("Organization not found.", 404);
 
-  const receipt = await client.getTransactionReceipt({ hash: run.txHash as Hex }).catch(() => null);
+  const receiptOf = (hash: string | null) => (hash ? client.getTransactionReceipt({ hash: hash as Hex }).catch(() => null) : Promise.resolve(null));
+  let receipt = await receiptOf(run.txHash);
+  // The reported transaction hasn't landed, reverted, or was never reported (the wallet sped it up,
+  // or the browser closed). Ask the contract whether this treasury paid this run, and in which tx.
+  if (!receipt || receipt.status !== "success") {
+    const paidIn = await paidOnChain(client, cfg.payroll, org.ownerAddress as Address, run.onchainRef);
+    if (paidIn && paidIn.toLowerCase() !== run.txHash?.toLowerCase()) {
+      const updated = await recordRunTransaction(session.orgId, run.id, paidIn);
+      if (updated) {
+        await logActivity(session.orgId, session.address, "run_tx_found", { runId: run.id, txHash: paidIn, reported: run.txHash });
+        run = updated;
+        receipt = await receiptOf(paidIn);
+      }
+    }
+  }
+  if (run.status !== "submitted" || !run.txHash) return fail("This run hasn't been sent yet.", 409);
   if (!receipt) return json({ run, pending: true }, 202);
+  const depth = CONFIRMATIONS[run.chainId] ?? 0n;
+  if (depth > 0n && (await client.getBlockNumber()) - receipt.blockNumber < depth) return json({ run, pending: true }, 202);
 
   const settle = async (result: { status: "confirmed"; record: RunRecord } | { status: "failed"; reason: string }) => {
     const updated = await markRunResult(session.orgId, run.id, result);
@@ -57,8 +99,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return settle({ status: "failed", reason: "That transaction didn't pay this run." });
   }
   // Funds must come from the company's treasury, whoever on the team asks for the check.
-  const org = await getOrganization(session.orgId);
-  if (!org || paid.args.payer.toLowerCase() !== org.ownerAddress.toLowerCase()) {
+  if (paid.args.payer.toLowerCase() !== org.ownerAddress.toLowerCase()) {
     return settle({ status: "failed", reason: "The run was paid from a different wallet than the treasury." });
   }
   const actual = logs.flatMap((l) =>

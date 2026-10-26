@@ -51,6 +51,8 @@ export type ChainState = {
   active?: DemoAccount;
   balances: Record<string, string>;
   allowances: Record<string, string>;
+  /** payer:runId → block it was paid in (the contract's paidBlock). */
+  paid?: Record<string, number>;
   txs: Record<string, Tx>;
 };
 
@@ -60,6 +62,7 @@ export function freshChain(): ChainState {
     authorized: false,
     balances: { [key(ADDRESSES.USDC, TREASURY)]: START.USDC.toString(), [key(ADDRESSES.USDT, TREASURY)]: START.USDT.toString() },
     allowances: {},
+    paid: {},
     txs: {},
   };
 }
@@ -110,6 +113,7 @@ export class SimChain {
   private execute(from: Address, calls: { to: Address; data: Hex }[], commit: boolean): Log[] {
     const balances = { ...this.state.balances };
     const allowances = { ...this.state.allowances };
+    const paid = { ...(this.state.paid ?? {}) };
     const get = (m: Record<string, string>, k: string) => BigInt(m[k] ?? "0");
     const logs: Log[] = [];
 
@@ -139,6 +143,9 @@ export class SimChain {
         const [runId, payments] = args as [Hex, readonly { token: Address; to: Address; amount: bigint }[]];
         if (payments.length === 0) throw new Revert("NoPayments");
         if (payments.length > MAX_PAYMENTS) throw new Revert("TooManyPayments");
+        // Same rule as the contract: each payer pays a run once.
+        if (paid[key(from, runId)]) throw new Revert("AlreadyPaid");
+        paid[key(from, runId)] = this.state.block + 1;
         payments.forEach((p, i) => {
           if (BigInt(p.to) === 0n) throw new Revert(`ZeroRecipient(${i})`);
           if (p.amount === 0n) throw new Revert(`ZeroAmount(${i})`);
@@ -160,6 +167,7 @@ export class SimChain {
     if (commit) {
       this.state.balances = balances;
       this.state.allowances = allowances;
+      this.state.paid = paid;
     }
     return logs;
   }
@@ -399,6 +407,10 @@ export class SimChain {
     if (to === ADDRESSES.payroll) {
       const { functionName } = decodeFunctionData({ abi: payrollAbi, data: tx.data });
       if (functionName === "MAX_PAYMENTS") return encodeFunctionResult({ abi: payrollAbi, functionName, result: BigInt(MAX_PAYMENTS) });
+      if (functionName === "paidBlock") {
+        const [payer, runId] = decodeFunctionData({ abi: payrollAbi, data: tx.data }).args as [Address, Hex];
+        return encodeFunctionResult({ abi: payrollAbi, functionName, result: BigInt(this.state.paid?.[key(payer, runId)] ?? 0) });
+      }
       try {
         this.execute(getAddress(tx.from ?? this.current.address), [{ to, data: tx.data }], false); // simulate pay()
       } catch (err) {

@@ -1,12 +1,11 @@
-import { cookies } from "next/headers";
 import { generateSiweNonce } from "viem/siwe";
 import { json } from "@/lib/server/http";
-import { cookieOptions, NONCE_COOKIE } from "@/lib/server/session";
+import { issueNonceCookie } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const nonce = generateSiweNonce();
-  (await cookies()).set(NONCE_COOKIE, nonce, cookieOptions(60 * 10));
+  await issueNonceCookie(nonce);
   return json({ nonce });
 }

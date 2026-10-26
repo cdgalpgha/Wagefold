@@ -50,7 +50,8 @@ const publicClient = createPublicClient({ chain: hardhat, transport: http() });
 /** Minimal cookie-keeping HTTP client, one per signed-in user. */
 function client() {
   const jar = new Map<string, string>();
-  return async function call<T = any>(p: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
+  return Object.assign(call, { jar });
+  async function call<T = any>(p: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
     const res = await fetch(BASE + p, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       headers: {
@@ -67,20 +68,28 @@ function client() {
       else jar.delete(k);
     }
     return { status: res.status, headers: res.headers, body: (await res.json().catch(() => null)) as T };
-  };
+  }
+}
+
+/** A sign-in message like the app makes: fresh, and valid for ten minutes. */
+function siwe(address: Address, nonce: string, over: Partial<Parameters<typeof createSiweMessage>[0]> = {}) {
+  return createSiweMessage({
+    address,
+    chainId: hardhat.id,
+    domain: new URL(BASE).host,
+    uri: BASE,
+    nonce,
+    version: "1",
+    issuedAt: new Date(),
+    expirationTime: new Date(Date.now() + 10 * 60 * 1000),
+    ...over,
+  });
 }
 
 async function signIn(call: ReturnType<typeof client>, key: Hex) {
   const account = privateKeyToAccount(key);
   const { body } = await call<{ nonce: string }>("/api/auth/nonce");
-  const message = createSiweMessage({
-    address: account.address,
-    chainId: hardhat.id,
-    domain: new URL(BASE).host,
-    uri: BASE,
-    nonce: body.nonce,
-    version: "1",
-  });
+  const message = siwe(account.address, body.nonce);
   const signature = await account.signMessage({ message });
   const res = await call("/api/auth/verify", { body: { message, signature } });
   assert.equal(res.status, 200, JSON.stringify(res.body));
@@ -129,7 +138,7 @@ async function main() {
     const { body } = await forger<{ nonce: string }>("/api/auth/nonce");
     const victim = privateKeyToAccount(KEYS.treasury);
     const attacker = privateKeyToAccount(KEYS.otherCompany);
-    const message = createSiweMessage({ address: victim.address, chainId: 31337, domain: new URL(BASE).host, uri: BASE, nonce: body.nonce, version: "1" });
+    const message = siwe(victim.address, body.nonce);
     const res = await forger("/api/auth/verify", { body: { message, signature: await attacker.signMessage({ message }) } });
     assert.equal(res.status, 401);
   });
@@ -139,10 +148,38 @@ async function main() {
     const { body } = await attacker<{ nonce: string }>("/api/auth/nonce");
     const victim = privateKeyToAccount(KEYS.treasury);
     // The victim signs a normal-looking sign-in on evil.example; the wallet shows no warning because the domain matches.
-    const message = createSiweMessage({ address: victim.address, chainId: 31337, domain: "evil.example", uri: "https://evil.example", nonce: body.nonce, version: "1" });
+    const message = siwe(victim.address, body.nonce, { domain: "evil.example", uri: "https://evil.example" });
     const signature = await victim.signMessage({ message });
     const res = await attacker("/api/auth/verify", { body: { message, signature }, headers: { "x-forwarded-host": "evil.example" } });
     assert.equal(res.status, 401, JSON.stringify(res.body));
+  });
+
+  await step("a signed sign-in works once, must be fresh, and only with a nonce this server issued", async () => {
+    const account = privateKeyToAccount(KEYS.otherCompany);
+    const first = client();
+    const { body } = await first<{ nonce: string }>("/api/auth/nonce");
+    const nonceCookie = first.jar.get("wf_nonce")!;
+    const message = siwe(account.address, body.nonce);
+    const signature = await account.signMessage({ message });
+    assert.equal((await first("/api/auth/verify", { body: { message, signature } })).status, 200);
+    // Someone who copied the message, signature and nonce cookie can't sign in with them again.
+    const replay = client();
+    replay.jar.set("wf_nonce", nonceCookie);
+    const again = await replay("/api/auth/verify", { body: { message, signature } });
+    assert.equal(again.status, 401);
+    assert.match(again.body.error, /already used/);
+    // A nonce the server never issued (unsigned cookie) is refused.
+    const forged = client();
+    forged.jar.set("wf_nonce", "abcdefgh12345678");
+    const m2 = siwe(account.address, "abcdefgh12345678");
+    assert.equal((await forged("/api/auth/verify", { body: { message: m2, signature: await account.signMessage({ message: m2 }) } })).status, 401);
+    // Stale, or never expiring, messages are refused.
+    for (const over of [{ issuedAt: new Date(Date.now() - 60 * 60 * 1000) }, { expirationTime: undefined }, { expirationTime: new Date(Date.now() + 7 * 864e5) }]) {
+      const c = client();
+      const n = (await c<{ nonce: string }>("/api/auth/nonce")).body.nonce;
+      const m = siwe(account.address, n, over);
+      assert.equal((await c("/api/auth/verify", { body: { message: m, signature: await account.signMessage({ message: m }) } })).status, 401, JSON.stringify(over));
+    }
   });
 
   await step("sends a nonce-based CSP, anti-clickjacking and no-cache headers", async () => {
@@ -217,6 +254,8 @@ async function main() {
     for (const body of [{ taxId: "GB\u0000" }, { invoiceNote: "a\u0000" }, { address: "x\u0001y" }]) {
       assert.equal((await api("/api/me", { method: "PATCH", body })).status, 400);
     }
+    // A body over 2 MB is refused without being read into memory.
+    assert.equal((await api("/api/employees", { body: { name: "x".repeat(2_500_000), wallet: RECIPIENTS[0], amount: "1", token: "USDC" } })).status, 400);
   });
 
   await step("refuses cross-site writes even with a valid session (CSRF defence in depth)", async () => {
@@ -508,6 +547,32 @@ async function main() {
     assert.equal((await api("/api/invoices")).body.invoices.length, before + 3);
   });
 
+  await step("the contract pays a run once: sending the same payroll again reverts", async () => {
+    await assert.rejects(pay(KEYS.treasury, run2.onchainRef, items2), /AlreadyPaid/);
+  });
+
+  await step("a payment the browser never reported is found on-chain and verified", async () => {
+    const r = (await prep("/api/runs", { body: { chainId: 31337 } })).body;
+    await prep(`/api/runs/${r.run.id}/request`, { body: {} });
+    const { body: m } = await admin(`/api/runs/${r.run.id}/approve`);
+    await admin(`/api/runs/${r.run.id}/approve`, { body: { signature: await privateKeyToAccount(KEYS.admin).signMessage({ message: m.message }) } });
+    const tx = await pay(KEYS.treasury, r.run.onchainRef, r.items); // paid, but /submit never called
+    const confirmed = await viewer(`/api/runs/${r.run.id}/confirm`, { body: {} });
+    assert.equal(confirmed.body.run.status, "confirmed", JSON.stringify(confirmed.body));
+    assert.equal(confirmed.body.run.txHash, tx);
+  });
+
+  await step("only one payroll can wait for approval at a time, even from two drafts", async () => {
+    const mine = (await api("/api/runs", { body: { chainId: 31337 } })).body.run;
+    const theirs = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    assert.equal((await prep(`/api/runs/${theirs.id}/request`, { body: {} })).status, 200);
+    const second = await api(`/api/runs/${mine.id}/request`, { body: {} });
+    assert.equal(second.status, 409);
+    assert.match(second.body.error, /Another payroll/);
+    assert.equal((await prep(`/api/runs/${theirs.id}/cancel`, { body: {} })).body.run.status, "cancelled");
+    assert.equal((await api(`/api/runs/${mine.id}/cancel`, { body: {} })).body.run.status, "cancelled");
+  });
+
   await step("an approval can't be replayed on another run, and nobody approves their own payroll", async () => {
     const r3 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
     await prep(`/api/runs/${r3.id}/request`, { body: { verifiedWallets: [] } });
@@ -524,6 +589,27 @@ async function main() {
     assert.match(own.body.error, /someone else/);
     assert.equal((await prep(`/api/runs/${r4.id}/cancel`, { body: {} })).body.run.status, "cancelled");
     assert.equal((await api(`/api/team/${addr("treasury")}`, { method: "DELETE" })).status, 404); // the owner can't be removed
+  });
+
+  await step("whoever changes a payee's wallet can't approve the payroll that pays it", async () => {
+    // The preparer is an admin by now (previous step), so they may edit People and approve.
+    const people = (await prep("/api/employees")).body.employees;
+    const target = people[0];
+    const moved = await prep(`/api/employees/${target.id}`, {
+      method: "PATCH",
+      body: { name: target.name, role: target.role, amount: target.amount, token: target.token, email: target.email, address: target.address, taxId: target.taxId, wallet: "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc" },
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    const r = (await admin("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await admin(`/api/runs/${r.id}/request`, { body: {} });
+    const blocked = await prep(`/api/runs/${r.id}/approve`);
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.body.error, /changed the wallet/);
+    // Someone who didn't touch it can.
+    const { body: m } = await api(`/api/runs/${r.id}/approve`);
+    const ok = await api(`/api/runs/${r.id}/approve`, { body: { signature: await privateKeyToAccount(KEYS.treasury).signMessage({ message: m.message }) } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await api(`/api/runs/${r.id}/cancel`, { body: {} })).body.run.status, "cancelled");
   });
 
   await step("removing a teammate ends their access, and their approvals stop counting", async () => {
@@ -566,9 +652,13 @@ async function main() {
     assert.ok(theirs.every((a: { actor: string }) => a.actor === privateKeyToAccount(KEYS.otherCompany).address));
   });
 
-  await step("signing out ends the session", async () => {
+  await step("signing out ends the session on the server, even for a copied cookie", async () => {
+    const copy = client();
+    copy.jar.set("wf_session", api.jar.get("wf_session")!);
+    assert.equal((await copy("/api/employees")).status, 200);
     await api("/api/auth/logout", { body: {} });
     assert.equal((await api("/api/employees")).status, 401);
+    assert.equal((await copy("/api/employees")).status, 401);
   });
 
   console.log(`\n${passed} end-to-end checks passed`);

@@ -418,7 +418,7 @@ function Hero3D() {
           <div className="flex items-center justify-between gap-3 border-b border-line-soft pb-4">
             <div>
               <p className="text-xs font-medium text-ink-2">October payroll</p>
-              <p className="tabular mt-0.5 font-mono text-sm font-medium sm:text-lg">30,900 USDC + 12,500 USDT</p>
+              <p className="tabular mt-0.5 text-sm font-semibold tracking-[-0.01em] sm:text-lg">30,900 USDC + 12,500 USDT</p>
             </div>
             <span className="whitespace-nowrap rounded-full bg-good-soft px-2.5 py-1 text-xs font-semibold text-good">1 transaction</span>
           </div>
@@ -451,7 +451,7 @@ function Hero3D() {
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
-                  <span className="tabular flex items-center gap-1 whitespace-nowrap font-mono text-xs sm:gap-1.5 sm:text-[13px]">
+                  <span className="tabular flex items-center gap-1 whitespace-nowrap text-xs font-medium sm:gap-1.5 sm:text-[13px]">
                     {p.amount}
                     <BrandImg logo={p.token} className="h-4 w-4" />
                   </span>
@@ -536,7 +536,7 @@ function GasBars() {
           <div key={b.label}>
             <div className="flex justify-between gap-3 text-sm">
               <span className="text-white/85">{b.label}</span>
-              <span className="tabular font-mono text-white">{fmt(b.value)}</span>
+              <span className="tabular font-medium text-white">{fmt(b.value)}</span>
             </div>
             <div className="mt-2 h-3 rounded-full bg-white/10">
               <div className={`h-3 rounded-full ${b.color} transition-[width] duration-1000 ease-out`} style={{ width: inView ? `${b.width}%` : "0%" }} />

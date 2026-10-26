@@ -11,28 +11,48 @@ import { can } from "@/lib/roles";
 import { TeamCard } from "./TeamCard";
 import { ThemeToggle } from "./ThemeToggle";
 import { useToast } from "./toast";
-import { Button, Card, Field, inputClass } from "./ui";
+import { Button, Card, Field, inputClass, PageHeader } from "./ui";
 
 const DAYS = [...Array.from({ length: 28 }, (_, i) => i + 1), LAST_DAY];
 
+const SECTIONS = [
+  { id: "team", label: "Team and approvals" },
+  { id: "company", label: "Company" },
+  { id: "invoicing", label: "Invoice details" },
+  { id: "appearance", label: "Appearance" },
+  { id: "data", label: "Your data" },
+];
+
 export function SettingsTab({ me }: { me: Me }) {
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">Settings</h1>
-        <p className="mt-1 text-[15px] text-ink-2">Company details, your payday, and a copy of all your data.</p>
-      </div>
-      <TeamCard me={me} />
-      <CompanyForm key={`${me.org.name}-${me.org.payDay}`} org={me.org} readOnly={!can(me.role, "settings")} />
-      <InvoiceForm key={`${me.org.legalName}-${me.org.address}-${me.org.taxId}-${me.org.invoicePrefix}-${me.org.invoiceNote}`} org={me.org} readOnly={!can(me.role, "settings")} />
-      <Card className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
-        <div className="flex-1 basis-56">
-          <h2 className="text-base font-semibold">Appearance</h2>
-          <p className="mt-1 text-sm text-ink-2">System follows your device&apos;s light or dark setting.</p>
+    <div className="flex flex-col gap-8">
+      <PageHeader title="Settings" description="Company details, your team, your payday, and a copy of all your data." />
+      <div className="grid items-start gap-8 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <nav aria-label="Settings sections" className="hidden lg:sticky lg:top-24 lg:flex lg:flex-col lg:gap-0.5">
+          {SECTIONS.map((s) => (
+            <a key={s.id} href={`#${s.id}`} className="rounded-lg px-3 py-2 text-sm text-ink-2 transition-colors hover:bg-line-soft hover:text-ink">
+              {s.label}
+            </a>
+          ))}
+        </nav>
+        <div className="flex max-w-3xl flex-col gap-6 [&>*]:scroll-mt-24">
+          <div id="team"><TeamCard me={me} /></div>
+          <div id="company">
+            <CompanyForm key={`${me.org.name}-${me.org.payDay}`} org={me.org} readOnly={!can(me.role, "settings")} />
+          </div>
+          <div id="invoicing">
+            <InvoiceForm key={`${me.org.legalName}-${me.org.address}-${me.org.taxId}-${me.org.invoicePrefix}-${me.org.invoiceNote}`} org={me.org} readOnly={!can(me.role, "settings")} />
+          </div>
+          <Card className="flex flex-wrap items-center gap-4 p-5 sm:p-6" >
+            <div id="appearance" className="flex-1 basis-56 scroll-mt-24">
+              <h2 className="text-base font-semibold">Appearance</h2>
+              <p className="mt-1 text-sm text-ink-2">System follows your device&apos;s light or dark setting.</p>
+            </div>
+            <ThemeToggle labels />
+          </Card>
+          <div id="data"><DataExport org={me.org} /></div>
         </div>
-        <ThemeToggle labels />
-      </Card>
-      <DataExport org={me.org} />
+      </div>
     </div>
   );
 }

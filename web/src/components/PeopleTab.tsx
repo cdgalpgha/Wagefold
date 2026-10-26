@@ -14,7 +14,7 @@ import { formatAmount, sumByToken, totalsLabel } from "@/lib/money";
 import type { Employee } from "@/lib/types";
 import { parseEmployeesCsv } from "@/lib/validation";
 import { copyText, useToast } from "./toast";
-import { Button, Card, CopyIcon, Field, inputClass, shortAddress, Skeleton } from "./ui";
+import { Button, Card, CopyIcon, EmptyState, Field, inputClass, shortAddress, Skeleton } from "./ui";
 
 // Avatar backgrounds; each is a theme token so they stay soft in light and dark mode.
 const TONES = ["bg-tone-1", "bg-tone-2", "bg-tone-3", "bg-tone-4", "bg-tone-5", "bg-tone-6"];
@@ -129,10 +129,10 @@ export function PeopleTab() {
   );
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">People</h1>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] sm:text-[30px]">People</h1>
           <p className="tabular mt-1 text-[15px] text-ink-2">
             {all.length} {all.length === 1 ? "person" : "people"} · {totalsLabel(sumByToken(all))} a month
           </p>
@@ -218,7 +218,7 @@ export function PeopleTab() {
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="font-semibold">{e.name}</span>
                 <span className="text-[13px] text-ink-2">{e.role || "No role"}</span>
-                <span className="tabular font-mono text-sm">{formatAmount(e.amount)} {e.token}</span>
+                <span className="tabular text-sm font-medium">{formatAmount(e.amount)} {e.token}</span>
                 <span className="-ml-2">{wallet(e)}</span>
               </div>
               {actions(e)}
@@ -248,7 +248,7 @@ export function PeopleTab() {
                   </td>
                   <td className="whitespace-nowrap border-b border-line-soft px-5 py-3 text-ink-2">{e.role || "—"}</td>
                   <td className="whitespace-nowrap border-b border-line-soft px-3 py-1.5">{wallet(e)}</td>
-                  <td className="tabular whitespace-nowrap border-b border-line-soft px-5 py-3 text-right font-mono">
+                  <td className="tabular whitespace-nowrap border-b border-line-soft px-5 py-3 text-right font-medium">
                     {formatAmount(e.amount)} {e.token}
                   </td>
                   <td className="whitespace-nowrap border-b border-line-soft px-3 py-1.5 text-right">{actions(e)}</td>
@@ -272,14 +272,12 @@ export function PeopleTab() {
           <p className="px-5 py-10 text-center text-sm text-ink-2">No one matches “{query}”.</p>
         )}
         {!employees.isLoading && all.length === 0 && (
-          <div className="flex flex-col items-center gap-3 px-5 py-12 text-center">
-            <p className="text-base font-medium">No one here yet</p>
-            <p className="max-w-md text-sm text-ink-2">Add each person&apos;s name, role, wallet address and monthly pay, or import a CSV.</p>
-            <p className="text-[13px] text-ink-2">
-              CSV columns: <span className="font-mono">name, role, wallet, amount, token</span>, plus optional <span className="font-mono">email, address, tax_id</span>
+          <EmptyState icon="people" title="No one here yet" action={<Button variant="secondary" onClick={downloadTemplate}>Download a CSV template</Button>}>
+            <p>Add each person&apos;s name, role, wallet address and monthly pay, or import a CSV.</p>
+            <p className="mt-2 text-[13px]">
+              Columns: <span className="font-mono">name, role, wallet, amount, token</span>, plus optional <span className="font-mono">email, address, tax_id</span>
             </p>
-            <Button variant="ghost" onClick={downloadTemplate}>Download a CSV template</Button>
-          </div>
+          </EmptyState>
         )}
       </Card>
     </div>

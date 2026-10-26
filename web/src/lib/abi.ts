@@ -26,6 +26,24 @@ export const payrollAbi = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+    type: "function",
+    name: "paidBlock",
+    stateMutability: "view",
+    inputs: [
+      { name: "payer", type: "address" },
+      { name: "runId", type: "bytes32" },
+    ],
+    outputs: [{ name: "blockNumber", type: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "AlreadyPaid",
+    inputs: [
+      { name: "runId", type: "bytes32" },
+      { name: "blockNumber", type: "uint256" },
+    ],
+  },
+  {
     type: "event",
     name: "PayrollPaid",
     inputs: [

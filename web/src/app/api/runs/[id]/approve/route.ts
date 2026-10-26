@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isHex, type Hex } from "viem";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, readJson, requireMember } from "@/lib/server/http";
-import { addApproval, getRun, logActivity } from "@/lib/server/repo";
+import { addApproval, getRun, lastPaidAt, logActivity, walletsChangedBy } from "@/lib/server/repo";
 import { expectedApprovalMessage } from "@/lib/server/runs";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -16,6 +16,13 @@ async function check(orgId: string, id: string, approver: string) {
   if (!["pending", "approved"].includes(found.run.status)) return { error: fail("This payroll isn't waiting for approval.", 409) };
   // Maker-checker: the person who prepared a run never approves it.
   if (found.run.createdBy?.toLowerCase() === approver.toLowerCase()) return { error: fail("You prepared this payroll, so someone else has to approve it.", 403) };
+  // Four eyes on payees: whoever added or changed a wallet since the last payroll can't approve paying it.
+  const changed = await walletsChangedBy(orgId, approver, await lastPaidAt(orgId));
+  const touched = found.items.filter((i) => changed.has(i.wallet.toLowerCase()));
+  if (touched.length) {
+    const names = touched.slice(0, 3).map((i) => i.name).join(", ");
+    return { error: fail(`You added or changed the wallet for ${names} since the last payroll, so someone else has to approve this one.`, 403) };
+  }
   return { found };
 }
 

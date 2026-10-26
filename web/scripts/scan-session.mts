@@ -8,7 +8,7 @@ const account = privateKeyToAccount(process.argv[2] as `0x${string}`);
 const n = await fetch(`${BASE}/api/auth/nonce`);
 const nonceCookie = n.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
 const { nonce } = await n.json();
-const message = createSiweMessage({ address: account.address, chainId: 31337, domain: "localhost:3000", uri: BASE, nonce, version: "1" });
+const message = createSiweMessage({ address: account.address, chainId: 31337, domain: "localhost:3000", uri: BASE, nonce, version: "1", issuedAt: new Date(), expirationTime: new Date(Date.now() + 10 * 60 * 1000) });
 const signature = await account.signMessage({ message });
 const v = await fetch(`${BASE}/api/auth/verify`, { method: "POST", headers: { "content-type": "application/json", cookie: nonceCookie }, body: JSON.stringify({ message, signature }) });
 const session = v.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("wf_session="));

@@ -4,7 +4,9 @@ import { parseSiweMessage } from "viem/siwe";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, readJson } from "@/lib/server/http";
 import { getOrganization, logActivity, membershipsFor, upsertOrganization } from "@/lib/server/repo";
-import { createSessionCookie, NONCE_COOKIE } from "@/lib/server/session";
+import { consumeNonce, createSessionCookie, NONCE_COOKIE, NONCE_TTL_SECONDS, readNonceCookie } from "@/lib/server/session";
+
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
 
 export async function POST(req: Request) {
   const body = (await readJson(req)) as { message?: unknown; signature?: unknown } | null;
@@ -13,11 +15,25 @@ export async function POST(req: Request) {
   if (!message || !signature) return fail("Missing sign-in message or signature.");
 
   const jar = await cookies();
-  const nonce = jar.get(NONCE_COOKIE)?.value;
+  // Only a nonce this server issued (signed cookie) and only within its ten minutes.
+  const nonce = await readNonceCookie();
   if (!nonce) return fail("Sign-in expired. Please try again.", 401);
 
   const parsed = parseSiweMessage(message);
   if (!parsed.address || !parsed.chainId) return fail("That sign-in message is incomplete.");
+  // The message must be fresh and short-lived, so a copied signature is useless soon after.
+  const now = Date.now();
+  const issued = parsed.issuedAt?.getTime();
+  const expires = parsed.expirationTime?.getTime();
+  if (
+    !issued ||
+    !expires ||
+    issued > now + CLOCK_SKEW_MS ||
+    issued < now - NONCE_TTL_SECONDS * 1000 ||
+    expires - issued > NONCE_TTL_SECONDS * 1000 + CLOCK_SKEW_MS
+  ) {
+    return fail("Sign-in expired. Please try again.", 401);
+  }
   const client = serverClient(parsed.chainId);
   if (!client) return fail("Switch your wallet to a supported network, then sign in again.");
 
@@ -34,6 +50,8 @@ export async function POST(req: Request) {
   // Checks the signature (regular wallets and smart wallets such as Safe), domain, nonce and expiry.
   const valid = await client.verifySiweMessage({ message, signature, nonce, domain });
   if (!valid) return fail("We couldn't verify that signature.", 401);
+  // Each signed message signs in once. A replay of the same message and nonce is refused.
+  if (!(await consumeNonce(nonce))) return fail("That sign-in was already used. Please sign in again.", 401);
 
   const address = getAddress(parsed.address);
   const org = await chooseOrganization(address);

@@ -151,6 +151,34 @@ create table if not exists run_approvals (
 drop trigger if exists run_approvals_append_only on run_approvals;
 create trigger run_approvals_append_only before update or delete on run_approvals
   for each row execute function audit_events_append_only();
+
+-- At most one payroll in flight per company (waiting for approval, approved, or sent and not yet
+-- verified), enforced by the database so two runs can never both be approved and sent. Skipped,
+-- with a warning, if existing data already breaks the rule; the app still checks it before writing.
+do $$ begin
+  create unique index if not exists payroll_runs_one_open on payroll_runs (org_id)
+    where status in ('pending', 'approved', 'submitted');
+exception when unique_violation then
+  raise warning 'payroll_runs_one_open not created: a company has more than one open run';
+end $$;
+
+-- Sessions live on the server too, so signing out (or the owner removing someone) ends them for
+-- real. The cookie only names the session; a copied cookie stops working once it's revoked.
+create table if not exists sessions (
+  id uuid primary key default gen_random_uuid(),
+  address text not null,
+  org_id uuid not null references organizations(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
+create index if not exists sessions_address on sessions (lower(address));
+
+-- Sign-in nonces that have been used. A signed sign-in message works once, even if someone copies it.
+create table if not exists used_nonces (
+  nonce text primary key,
+  expires_at timestamptz not null
+);
 `;
 
 async function init(): Promise<Db> {

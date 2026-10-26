@@ -1,7 +1,7 @@
 import { json } from "@/lib/server/http";
-import { clearSessionCookie } from "@/lib/server/session";
+import { endSession } from "@/lib/server/session";
 
 export async function POST() {
-  await clearSessionCookie();
+  await endSession();
   return json({ ok: true });
 }

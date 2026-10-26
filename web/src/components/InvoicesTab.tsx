@@ -8,7 +8,7 @@ import { invoiceFilename, periodLabel, type Invoice } from "@/lib/invoices";
 import { formatAmount } from "@/lib/money";
 import { payslipDate } from "@/lib/records";
 import { useToast } from "./toast";
-import { Badge, Button, Card, Skeleton } from "./ui";
+import { Badge, Button, Card, EmptyState, Skeleton } from "./ui";
 
 /** pdf-lib is only needed when someone downloads, so it loads on first use. */
 async function pdf(invoices: Invoice[]) {
@@ -40,10 +40,10 @@ export function InvoicesTab({ onOpenSettings }: { onOpenSettings: () => void }) 
   }
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">Invoices</h1>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] sm:text-[30px]">Invoices</h1>
           <p className="mt-1 max-w-[62ch] text-[15px] text-ink-2">
             Issued automatically for every payment once a payroll is verified on-chain, numbered in order. Issued invoices never change.
           </p>
@@ -99,7 +99,7 @@ export function InvoicesTab({ onOpenSettings }: { onOpenSettings: () => void }) 
               <span className="order-4 hidden text-ink-2 md:order-none md:block">{periodLabel(inv.data.period)}</span>
               <span className="order-2 flex items-center justify-end gap-2 md:order-none">
                 <Badge tone="good">Paid</Badge>
-                <span className="tabular whitespace-nowrap font-mono">{formatAmount(inv.data.amount)} {inv.data.token}</span>
+                <span className="tabular whitespace-nowrap font-medium">{formatAmount(inv.data.amount)} {inv.data.token}</span>
               </span>
               <span className="order-5 col-span-2 flex items-center justify-between md:order-none md:col-span-1 md:justify-end">
                 <span className="text-[13px] text-ink-2 md:hidden">{payslipDate(inv.issuedAt)}</span>
@@ -123,12 +123,9 @@ export function InvoicesTab({ onOpenSettings }: { onOpenSettings: () => void }) 
           </div>
         )}
         {!invoices.isLoading && list.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
-            <p className="font-medium">No invoices yet</p>
-            <p className="max-w-sm text-sm text-ink-2">
-              Run a payroll and each person gets an invoice as soon as the payment is verified. Add your company&apos;s legal name and address in Settings first.
-            </p>
-          </div>
+          <EmptyState icon="invoices" title="No invoices yet" action={<Button variant="secondary" onClick={onOpenSettings}>Add invoice details</Button>}>
+            Run a payroll and each person gets an invoice as soon as the payment is verified. Add your company&apos;s legal name and address first.
+          </EmptyState>
         )}
       </Card>
     </div>

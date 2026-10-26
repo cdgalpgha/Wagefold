@@ -75,6 +75,7 @@ export type ActivityAction =
   | "person_removed"
   | "people_imported"
   | "run_sent"
+  | "run_tx_found"
   | "run_paid"
   | "run_failed"
   | "company_updated"

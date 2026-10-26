@@ -22,7 +22,7 @@ export type Phase =
   | { kind: "approving"; run: Run; items: RunItem[]; symbol: string; step: number; steps: number }
   | { kind: "confirm"; run: Run; items: RunItem[]; batched: boolean }
   | { kind: "sending"; run: Run; items: RunItem[]; txHash?: Hex }
-  | { kind: "verifying"; run: Run; items: RunItem[]; txHash: Hex }
+  | { kind: "verifying"; run: Run; items: RunItem[]; txHash?: Hex }
   | { kind: "done"; run: Run; items: RunItem[] }
   | { kind: "failed"; run: Run; items: RunItem[] }
   | { kind: "error"; message: string; run?: Run; items?: RunItem[] };
@@ -121,6 +121,17 @@ export function usePayroll() {
       const payments = buildPayments(items, cfg);
       const need = requiredAllowances(payments);
       try {
+        // Already paid by this treasury (the first attempt landed after all): verify instead of paying again.
+        const paidIn = await publicClient
+          .readContract({ address: cfg.payroll, abi: payrollAbi, functionName: "paidBlock", args: [address, run.onchainRef] })
+          .catch(() => 0n);
+        if (paidIn > 0n) {
+          setPhase({ kind: "verifying", run, items, txHash: run.txHash ?? undefined });
+          const res = await api<{ run: Run; pending?: boolean }>(`/api/runs/${run.id}/confirm`, { body: {} });
+          if (res.run.status === "confirmed") return setPhase({ kind: "done", run: res.run, items });
+          if (res.run.status === "failed") return setPhase({ kind: "failed", run: res.run, items });
+          return setPhase({ kind: "error", message: "This payroll was already paid. We're still confirming it; check History in a minute.", run, items });
+        }
         // 1. Make sure the treasury can cover every token, and work out which approvals are missing.
         const approvals: { token: Address; amount: bigint; current: bigint }[] = [];
         for (const [token, amount] of need) {

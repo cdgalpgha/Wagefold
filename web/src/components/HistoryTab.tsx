@@ -23,7 +23,7 @@ import {
 import type { Activity, Me, Records, Run, RunDetail, RunStatus } from "@/lib/types";
 import { ApprovalPanel } from "./Approvals";
 import { copyText, useToast } from "./toast";
-import { Button, Card, CopyIcon, shortAddress, Skeleton, XIcon } from "./ui";
+import { Button, Card, CopyIcon, EmptyState, shortAddress, Skeleton, XIcon } from "./ui";
 
 const STATUS: Record<RunStatus, { label: string; className: string }> = {
   confirmed: { label: "Paid", className: "bg-good-soft text-good" },
@@ -41,10 +41,10 @@ type View = "runs" | "activity";
 export function HistoryTab({ me }: { me: Me }) {
   const [view, setView] = useState<View>("runs");
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-tight sm:text-[30px]">History</h1>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] sm:text-[30px]">History</h1>
           <p className="mt-1 text-[15px] text-ink-2">
             {view === "runs" ? "Every run, who was paid, payslips and exports for your accountant." : "Who changed what, and when. Entries can't be edited or deleted."}
           </p>
@@ -57,7 +57,7 @@ export function HistoryTab({ me }: { me: Me }) {
               role="tab"
               aria-selected={view === v}
               onClick={() => setView(v)}
-              className={`min-h-9 rounded-lg px-3.5 text-sm font-medium ${view === v ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"}`}
+              className={`min-h-9 rounded-lg px-3.5 text-sm font-medium ${view === v ? "bg-surface text-ink shadow-raised" : "text-ink-2 hover:text-ink"}`}
             >
               {v === "runs" ? "Payroll runs" : "Activity"}
             </button>
@@ -124,7 +124,11 @@ function Runs({ me }: { me: Me }) {
             ))}
           </div>
         )}
-        {!runs.isLoading && list.length === 0 && <p className="px-5 py-12 text-center text-ink-2">No payroll runs yet.</p>}
+        {!runs.isLoading && list.length === 0 && (
+          <EmptyState icon="runs" title="No payroll runs yet">
+            Every run you prepare shows up here with who was paid, its approvals, payslips and an export for your accountant.
+          </EmptyState>
+        )}
       </Card>
       {slip && <PayslipDialog me={me} run={slip.run} position={slip.position} onClose={() => setSlip(null)} />}
     </>
@@ -220,7 +224,7 @@ function RunDetails({ run, me, onPayslip }: { run: Run; me: Me; onPayslip: (posi
             <li key={i.wallet} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
               <span className="flex-1 basis-40 font-medium">{i.name}</span>
               <span className="font-mono text-[13px] text-ink-2" title={i.wallet}>{shortAddress(i.wallet)}</span>
-              <span className="tabular min-w-[130px] text-right font-mono">{formatAmount(i.amount)} {i.token}</span>
+              <span className="tabular min-w-[130px] text-right font-medium">{formatAmount(i.amount)} {i.token}</span>
               {paid && (
                 <button type="button" onClick={() => onPayslip(n)} className="min-h-9 rounded-lg px-2 text-[13px] font-medium text-brand hover:bg-brand-soft">
                   Payslip
@@ -294,7 +298,7 @@ function PayslipDialog({ me, run, position, onClose }: { me: Me; run: Run; posit
           </div>
         ) : (
           <>
-            <p className="tabular mt-4 font-mono text-3xl font-medium">{formatAmount(slip.amount)} {slip.token}</p>
+            <p className="tabular mt-4 text-3xl font-semibold tracking-[-0.02em]">{formatAmount(slip.amount)} {slip.token}</p>
             <p className="mt-1 text-sm text-ink-2">
               ≈ {formatAmount(slip.usd)} USD · {rateFor(run, slip.token).source.startsWith("par") ? "at par" : `at ${slip.rate.rate}`}
             </p>
@@ -367,7 +371,9 @@ function ActivityLog() {
           <Skeleton className="h-4 w-40" />
         </div>
       )}
-      {!activity.isLoading && list.length === 0 && <p className="px-5 py-12 text-center text-ink-2">Nothing yet.</p>}
+      {!activity.isLoading && list.length === 0 && (
+        <EmptyState icon="activity" title="Nothing logged yet">Sign-ins, changes to People and every payroll step are recorded here.</EmptyState>
+      )}
     </Card>
   );
 }

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          SESSION_SECRET: ci-only-secret-not-used-anywhere-else
+      # Production dependencies only. Warns rather than fails: wallet SDKs pin an old zod (see docs/security).
+      - run: npm audit --omit=dev --audit-level=high || (echo "::warning::npm audit found advisories, see docs/security"; exit 0)
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+      - run: npx hardhat test
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secrets in git history (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Static analysis (Semgrep)
+        run: |
+          pipx install semgrep
+          semgrep scan --error --config p/owasp-top-ten --config p/typescript --config p/react --config p/nextjs --config p/secrets web/src
+      - name: Contract analysis (Slither)
+        run: |
+          cd contracts && npm ci
+          pipx install slither-analyzer
+          slither . --exclude-dependencies --filter-paths "node_modules|contracts/test" --fail-medium

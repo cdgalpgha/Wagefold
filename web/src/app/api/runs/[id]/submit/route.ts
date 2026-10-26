@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fail, json, readJson, requireMember } from "@/lib/server/http";
-import { getOrganization, getRun, logActivity, markRunSubmitted } from "@/lib/server/repo";
+import { getOrganization, getRun, logActivity, markRunSubmitted, openRun, OpenRunError } from "@/lib/server/repo";
 import { verifiedWallets } from "@/lib/server/wallets";
 
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -21,8 +21,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const found = await getRun(session.orgId, id).catch(() => null);
   if (!found) return fail("Payroll run not found.", 404);
   const verified = verifiedWallets(body?.verifiedWallets, new Set(found.items.map((i) => i.wallet.toLowerCase())));
-  const run = await markRunSubmitted(session.orgId, id, txHash, session.address, found.run.status === "draft" ? verified : null);
+  const run = await markRunSubmitted(session.orgId, id, txHash, session.address, found.run.status === "draft" ? verified : null).catch((err) => {
+    if (err instanceof OpenRunError) return null;
+    throw err;
+  });
   if (!run) {
+    const open = await openRun(session.orgId);
+    if (open && open.id !== id) return fail(new OpenRunError().message, 409);
     const needs = org.approvalsRequired;
     return fail(
       needs > 0 && found.run.approvalCount < needs

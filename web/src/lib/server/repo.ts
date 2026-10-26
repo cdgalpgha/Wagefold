@@ -83,6 +83,15 @@ const toRun = (r: RunRow): Run => ({
 });
 
 export class DuplicateWalletError extends Error {}
+export class OpenRunError extends Error {
+  constructor() {
+    super("Another payroll is already waiting for approval or being sent. Finish or cancel it first.");
+  }
+}
+
+/** No other run of this company is in flight. Also enforced by a unique index (db.ts). */
+const NO_OTHER_OPEN_RUN = `not exists (select 1 from payroll_runs o where o.org_id = $1 and o.id <> $2
+  and o.status in ('pending', 'approved', 'submitted'))`;
 
 function isUniqueViolation(err: unknown) {
   return typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "23505";
@@ -431,7 +440,8 @@ export async function listRuns(orgId: string): Promise<Run[]> {
 /**
  * Records the payroll transaction. Only moves a run that is still sendable, and only with enough
  * approvals for the company's current rule (checked again here, in the same statement, so a
- * rule raised after approval still applies).
+ * rule raised after approval still applies). A sent run can be sent again, e.g. when its first
+ * transaction never landed: the contract pays each run once per treasury, so a retry can't pay twice.
  */
 export async function markRunSubmitted(
   orgId: string,
@@ -441,30 +451,40 @@ export async function markRunSubmitted(
   verifiedWallets: string[] | null,
 ): Promise<Run | null> {
   const db = await getDb();
-  const { rows } = await db.query<RunRow>(
-    `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = now(), submitted_by = $4,
-       verified_wallets = coalesce(verified_wallets, $5::jsonb)
-     where org_id = $1 and id = $2
-       and (status in ('pending', 'approved')
-            or (status = 'draft' and (select approvals_required from organizations where id = $1) = 0))
-       and ${VALID_APPROVALS} >= (select approvals_required from organizations where id = $1)
-     returning ${RUN_COLUMNS}`,
-    [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null],
-  );
-  return rows[0] ? toRun(rows[0]) : null;
+  try {
+    const { rows } = await db.query<RunRow>(
+      `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = now(), submitted_by = $4,
+         verified_wallets = coalesce(verified_wallets, $5::jsonb)
+       where org_id = $1 and id = $2
+         and (status in ('pending', 'approved', 'submitted')
+              or (status = 'draft' and (select approvals_required from organizations where id = $1) = 0 and ${NO_OTHER_OPEN_RUN}))
+         and ${VALID_APPROVALS} >= (select approvals_required from organizations where id = $1)
+       returning ${RUN_COLUMNS}`,
+      [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null],
+    );
+    return rows[0] ? toRun(rows[0]) : null;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new OpenRunError();
+    throw err;
+  }
 }
 
 /** Sends a draft for approval (or straight to the treasury when no approvals are required). */
 export async function requestApproval(orgId: string, id: string, by: string, verifiedWallets: string[]): Promise<Run | null> {
   const db = await getDb();
-  const { rows } = await db.query<RunRow>(
-    `update payroll_runs set requested_at = now(), verified_wallets = $4,
-       status = case when (select approvals_required from organizations where id = $1) = 0 then 'approved' else 'pending' end
-     where org_id = $1 and id = $2 and status = 'draft' and lower(created_by) = lower($3)
-     returning ${RUN_COLUMNS}`,
-    [orgId, id, by, JSON.stringify(verifiedWallets)],
-  );
-  return rows[0] ? toRun(rows[0]) : null;
+  try {
+    const { rows } = await db.query<RunRow>(
+      `update payroll_runs set requested_at = now(), verified_wallets = $4,
+         status = case when (select approvals_required from organizations where id = $1) = 0 then 'approved' else 'pending' end
+       where org_id = $1 and id = $2 and status = 'draft' and lower(created_by) = lower($3) and ${NO_OTHER_OPEN_RUN}
+       returning ${RUN_COLUMNS}`,
+      [orgId, id, by, JSON.stringify(verifiedWallets)],
+    );
+    return rows[0] ? toRun(rows[0]) : null;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new OpenRunError();
+    throw err;
+  }
 }
 
 /** The run that is waiting for approval, approved, or sent and not yet verified. At most one at a time. */
@@ -540,6 +560,56 @@ export async function cancelRun(orgId: string, runId: string): Promise<Run | nul
     [orgId, runId],
   );
   return rows[0] ? toRun(rows[0]) : null;
+}
+
+/**
+ * Points a run at the transaction that actually paid it, found on-chain. Used when the wallet
+ * replaced the transaction (speed-up) or the browser never reported it. The caller has read the
+ * contract's paidBlock for this treasury and run; the confirm step still checks every payment.
+ */
+export async function recordRunTransaction(orgId: string, id: string, txHash: string): Promise<Run | null> {
+  const db = await getDb();
+  const { rows } = await db.query<RunRow>(
+    `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = coalesce(submitted_at, now())
+     where org_id = $1 and id = $2 and status in ('approved', 'submitted') returning ${RUN_COLUMNS}`,
+    [orgId, id, txHash],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
+/**
+ * Wallets this person added or changed in People since `since` (the last paid run). Whoever
+ * changes where money goes must not be the one who approves paying it.
+ */
+export async function walletsChangedBy(orgId: string, actor: string, since: Date | null): Promise<Set<string>> {
+  const db = await getDb();
+  const { rows } = await db.query<{ action: string; detail: Record<string, unknown> | string }>(
+    `select action, detail from audit_events where org_id = $1 and lower(actor) = lower($2)
+       and action in ('person_added', 'person_updated', 'people_imported') and ($3::timestamptz is null or at > $3::timestamptz)`,
+    [orgId, actor, since?.toISOString() ?? null],
+  );
+  const out = new Set<string>();
+  const add = (w: unknown) => typeof w === "string" && out.add(w.toLowerCase());
+  for (const r of rows) {
+    const d = json<Record<string, unknown>>(r.detail) ?? {};
+    if (r.action === "person_added") add(d.wallet);
+    if (r.action === "person_updated") add((d.changes as { wallet?: unknown[] } | undefined)?.wallet?.[1]);
+    if (r.action === "people_imported") {
+      if (Array.isArray(d.wallets)) d.wallets.forEach(add);
+      if (Array.isArray(d.people)) d.people.forEach((p) => add((p as { wallet?: unknown }).wallet));
+    }
+  }
+  return out;
+}
+
+/** When the company's last run was paid, or null if it never was. */
+export async function lastPaidAt(orgId: string): Promise<Date | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ at: Date | string | null }>(
+    `select max(confirmed_at) as at from payroll_runs where org_id = $1 and status = 'confirmed'`,
+    [orgId],
+  );
+  return rows[0]?.at ? new Date(rows[0].at) : null;
 }
 
 export async function markRunResult(

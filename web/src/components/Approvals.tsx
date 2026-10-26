@@ -35,6 +35,9 @@ export function runActions(me: Me, run: Run, approvals: Approval[] = []) {
     canSend: isOwner && (run.status === "approved" || run.status === "pending") && run.approvalCount >= me.org.approvalsRequired,
     canCancel: (isCreator || isOwner) && (run.status === "pending" || run.status === "approved"),
     canRecheck: run.status === "submitted" && !!run.txHash,
+    // If the wallet dropped the transaction, the treasury sends the same run again. The contract pays
+    // each run once per treasury, so a resend can never pay anyone twice.
+    canResend: isOwner && run.status === "submitted" && run.approvalCount >= me.org.approvalsRequired,
     approvedByMe: approved,
     isCreator,
     isOwner,
@@ -128,7 +131,9 @@ export function OpenRunCard({
   const left = Math.max(0, need - run.approvalCount);
   const note =
     run.status === "submitted"
-      ? "The treasury sent this payroll. Wagefold marks it paid once the transaction checks out on-chain."
+      ? a.canResend
+        ? "You sent this payroll. Wagefold marks it paid once the transaction checks out on-chain. If your wallet dropped it, send it again: a payroll can only be paid once, so nobody is paid twice."
+        : "The treasury sent this payroll. Wagefold marks it paid once the transaction checks out on-chain."
       : left === 0
         ? a.isOwner
           ? "Everything is approved. Review it once more and send it from the treasury wallet."
@@ -167,6 +172,9 @@ export function OpenRunCard({
         )}
         {a.canRecheck && (
           <Button size="lg" onClick={onRecheck} disabled={busy}>{busy ? <Spinner /> : null}Check the transaction</Button>
+        )}
+        {a.canResend && (
+          <Button variant="secondary" onClick={() => onOpen("send")} disabled={busy}>Send again</Button>
         )}
         {!a.canApprove && !a.canSend && !a.canRecheck && (
           <Button variant="secondary" onClick={() => onOpen("view")}>View details</Button>
