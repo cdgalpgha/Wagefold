@@ -11,7 +11,7 @@
     "deploy:base": "hardhat run scripts/deploy.ts --network base"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
+    "@nomicfoundation/hardhat-network-helpers": "^3.0.12",
     "@nomicfoundation/hardhat-viem": "^2.1.5",
     "@openzeppelin/contracts": "^5.1.0",
     "@types/mocha": "^10.0.10",
