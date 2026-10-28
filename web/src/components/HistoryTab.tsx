@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { describeActivity } from "@/lib/activity";
 import { api } from "@/lib/api";
+import { LIVE } from "@/lib/live";
 import { explorerTx, getChainConfig } from "@/lib/chains";
 import { saveFile, type SaveResult } from "@/lib/download";
 import { formatAmount, formatEth, totalsLabel } from "@/lib/money";
@@ -78,7 +79,7 @@ function useSaved() {
 }
 
 function Runs({ me }: { me: Me }) {
-  const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs) });
+  const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs), ...LIVE });
   const [open, setOpen] = useState<string | null>(null);
   const [slip, setSlip] = useState<{ run: Run; position: number } | null>(null);
   const list = runs.data ?? [];
@@ -343,7 +344,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 const TONE = { neutral: "bg-line-strong", warn: "bg-warn-dot", good: "bg-good-dot", bad: "bg-bad" };
 
 function ActivityLog() {
-  const activity = useQuery({ queryKey: ["activity"], queryFn: () => api<{ activity: Activity[] }>("/api/activity").then((r) => r.activity) });
+  const activity = useQuery({ queryKey: ["activity"], queryFn: () => api<{ activity: Activity[] }>("/api/activity").then((r) => r.activity), ...LIVE });
   const list = activity.data ?? [];
   return (
     <Card className="overflow-hidden">

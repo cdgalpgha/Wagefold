@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { LIVE, LIVE_SLOW } from "@/lib/live";
 import { ROLE_LABEL } from "@/lib/roles";
 import { totalsLabel } from "@/lib/money";
 import type { Approval, Me, Member, Run } from "@/lib/types";
@@ -9,7 +10,7 @@ import { Badge, Button, Card, CheckIcon, shortAddress, Spinner } from "./ui";
 import { ChequeBand } from "./Security";
 
 export function useTeam() {
-  return useQuery({ queryKey: ["team"], queryFn: () => api<{ members: Member[]; approvalsRequired: number }>("/api/team") });
+  return useQuery({ queryKey: ["team"], queryFn: () => api<{ members: Member[]; approvalsRequired: number }>("/api/team"), ...LIVE_SLOW });
 }
 
 /** "Dana Okafor" if they're on the team with a name, otherwise the short address. */
@@ -128,7 +129,7 @@ export function OpenRunCard({
   onRecheck: () => void;
 }) {
   const nameOf = useNameOf();
-  const detail = useQuery({ queryKey: ["run", run.id], queryFn: () => api<{ approvals: Approval[] }>(`/api/runs/${run.id}`) });
+  const detail = useQuery({ queryKey: ["run", run.id], queryFn: () => api<{ approvals: Approval[] }>(`/api/runs/${run.id}`), ...LIVE });
   const approvals = detail.data?.approvals ?? [];
   const a = runActions(me, run, approvals);
   const need = me.org.approvalsRequired;

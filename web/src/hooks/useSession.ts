@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
+import { LIVE_SLOW } from "@/lib/live";
 import type { Me } from "@/lib/types";
 
 export function useSession() {
@@ -15,5 +16,7 @@ export function useSession() {
         throw err;
       }
     },
+    // Picks up a role change, a new payroll rule, or removal from the team without a reload.
+    ...LIVE_SLOW,
   });
 }

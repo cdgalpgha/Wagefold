@@ -7,6 +7,7 @@ import { usePayroll, type Phase, type ReviewMode } from "@/hooks/usePayroll";
 import { useTreasury } from "@/hooks/useTreasury";
 import { MAX_PAYMENTS } from "@/lib/abi";
 import { api } from "@/lib/api";
+import { LIVE } from "@/lib/live";
 import { explorerTx, getChainConfig, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
 import { formatAmount, formatEth, sumByToken, totalsLabel } from "@/lib/money";
 import type { Change, RunReview } from "@/lib/changes";
@@ -166,7 +167,7 @@ function PayHome({
 }) {
   const employees = useEmployees();
   const nameOf = useNameOf();
-  const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs) });
+  const runs = useQuery({ queryKey: ["runs"], queryFn: () => api<{ runs: Run[] }>("/api/runs").then((r) => r.runs), ...LIVE });
   const openRun = runs.data?.find((r) => r.status === "pending" || r.status === "approved" || r.status === "submitted");
   const latest = runs.data?.[0];
   const rejected = latest?.status === "rejected" ? latest : undefined;
