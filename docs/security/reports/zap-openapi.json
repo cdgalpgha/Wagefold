@@ -594,6 +594,94 @@
           }
         }
       }
+    },
+    "/api/team/treasury": {
+      "get": {
+        "summary": "treasury transfer",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      },
+      "post": {
+        "summary": "propose treasury",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "address": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "address": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "cancel treasury transfer",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/treasury/transfers": {
+      "get": {
+        "summary": "incoming treasury transfers",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/api/treasury/transfers/TRANSFER_ID": {
+      "get": {
+        "summary": "treasury transfer message",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      },
+      "post": {
+        "summary": "accept treasury transfer",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "signature": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "signature": "0xababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

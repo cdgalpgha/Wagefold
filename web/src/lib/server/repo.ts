@@ -4,7 +4,7 @@ import type { TokenSymbol } from "../chains";
 import { buildInvoice, type Invoice, type InvoiceData } from "../invoices";
 import type { Known } from "../lookalike";
 import type { AssignableRole, Role } from "../roles";
-import type { Approval, Member, Membership, Org, Run as PublicRun, RunStatus as PublicRunStatus } from "../types";
+import type { Approval, Member, Membership, Org, Run as PublicRun, RunStatus as PublicRunStatus, TreasuryTransfer } from "../types";
 import { canonical } from "../money";
 import { onchainRef, type RunItem } from "../payments";
 import type { EmployeeInput } from "../validation";
@@ -219,6 +219,151 @@ export async function removeMember(orgId: string, address: string): Promise<Memb
     [orgId, address],
   );
   return rows[0] ? toMember(rows[0]) : null;
+}
+
+// Treasury rotation -------------------------------------------------------------------------------
+
+type TransferRow = {
+  id: string;
+  org_id: string;
+  company: string;
+  from_address: string;
+  to_address: string;
+  message: string;
+  created_at: Date | string;
+  expires_at: Date | string;
+};
+const TRANSFER_COLUMNS = `t.id::text as id, t.org_id::text as org_id, o.name as company, t.from_address, t.to_address, t.message, t.created_at, t.expires_at`;
+const OPEN_TRANSFER = `t.accepted_at is null and t.cancelled_at is null and t.expires_at > now()`;
+const toTransfer = (r: TransferRow): TreasuryTransfer & { message: string } => ({
+  id: r.id,
+  orgId: r.org_id,
+  company: r.company,
+  from: r.from_address,
+  to: r.to_address,
+  message: r.message,
+  createdAt: iso(r.created_at)!,
+  expiresAt: iso(r.expires_at)!,
+});
+const publicTransfer = ({ message: _message, ...t }: TreasuryTransfer & { message: string }): TreasuryTransfer => t;
+
+/** The company's open proposal to move to a new treasury wallet, if any. */
+export async function openTreasuryTransfer(orgId: string): Promise<TreasuryTransfer | null> {
+  const db = await getDb();
+  const { rows } = await db.query<TransferRow>(
+    `select ${TRANSFER_COLUMNS} from treasury_transfers t join organizations o on o.id = t.org_id where t.org_id = $1 and ${OPEN_TRANSFER}`,
+    [orgId],
+  );
+  return rows[0] ? publicTransfer(toTransfer(rows[0])) : null;
+}
+
+/** Open proposals asking this wallet to become a company's treasury. */
+export async function incomingTreasuryTransfers(address: string): Promise<TreasuryTransfer[]> {
+  const db = await getDb();
+  const { rows } = await db.query<TransferRow>(
+    `select ${TRANSFER_COLUMNS} from treasury_transfers t join organizations o on o.id = t.org_id
+     where lower(t.to_address) = lower($1) and ${OPEN_TRANSFER} order by t.created_at desc`,
+    [address],
+  );
+  return rows.map((r) => publicTransfer(toTransfer(r)));
+}
+
+/** One open proposal with the exact message the new wallet must sign, but only for that wallet. */
+export async function treasuryTransferFor(id: string, to: string): Promise<(TreasuryTransfer & { message: string }) | null> {
+  const db = await getDb();
+  const { rows } = await db.query<TransferRow>(
+    `select ${TRANSFER_COLUMNS} from treasury_transfers t join organizations o on o.id = t.org_id
+     where t.id = $1 and lower(t.to_address) = lower($2) and ${OPEN_TRANSFER}`,
+    [id, to],
+  );
+  return rows[0] ? toTransfer(rows[0]) : null;
+}
+
+/** True if this wallet owns a company other than `orgId` that has anything in it. */
+export async function ownsAnotherCompany(address: string, orgId: string): Promise<boolean> {
+  const db = await getDb();
+  const { rows } = await db.query(
+    `select 1 from organizations o where lower(o.owner_address) = lower($1) and o.id <> $2 and ${NOT_EMPTY}`,
+    [address, orgId],
+  );
+  return rows.length > 0;
+}
+/** A company someone has used: people, payroll runs or teammates besides the owner. */
+const NOT_EMPTY = `(exists (select 1 from employees e where e.org_id = o.id)
+  or exists (select 1 from payroll_runs r where r.org_id = o.id)
+  or exists (select 1 from members m where m.org_id = o.id and m.role <> 'owner'))`;
+
+/** Replaces any open proposal with a new one. The message is fixed now and never rebuilt. */
+export async function proposeTreasuryTransfer(t: { id: string; orgId: string; from: string; to: string; message: string; expiresAt: Date }): Promise<void> {
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await tx.query(`update treasury_transfers set cancelled_at = now() where org_id = $1 and accepted_at is null and cancelled_at is null`, [t.orgId]);
+    await tx.query(
+      `insert into treasury_transfers (id, org_id, from_address, to_address, message, expires_at) values ($1, $2, $3, $4, $5, $6)`,
+      [t.id, t.orgId, t.from, t.to, t.message, t.expiresAt.toISOString()],
+    );
+  });
+}
+
+export async function cancelTreasuryTransfer(orgId: string): Promise<TreasuryTransfer | null> {
+  const db = await getDb();
+  const { rows } = await db.query<{ id: string }>(
+    `update treasury_transfers set cancelled_at = now() where org_id = $1 and accepted_at is null and cancelled_at is null returning id::text as id`,
+    [orgId],
+  );
+  if (!rows[0]) return null;
+  const { rows: full } = await db.query<TransferRow>(
+    `select ${TRANSFER_COLUMNS} from treasury_transfers t join organizations o on o.id = t.org_id where t.id = $1`,
+    [rows[0].id],
+  );
+  return full[0] ? publicTransfer(toTransfer(full[0])) : null;
+}
+
+export type TransferOutcome = "ok" | "gone" | "stale" | "open_run" | "owns_company";
+
+/**
+ * The new wallet accepts: in one transaction the company's treasury becomes the new wallet, the old
+ * treasury leaves the team and its sessions end, and the proposal closes so its signature can't be
+ * used again. Refused if a payroll is in flight, or the new wallet already runs a company in use
+ * (an empty company it got just by signing in is removed).
+ */
+export async function acceptTreasuryTransfer(id: string, to: string, signature: string): Promise<{ outcome: TransferOutcome; transfer?: TreasuryTransfer }> {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const { rows } = await tx.query<TransferRow>(
+      `select ${TRANSFER_COLUMNS} from treasury_transfers t join organizations o on o.id = t.org_id
+       where t.id = $1 and lower(t.to_address) = lower($2) and ${OPEN_TRANSFER} for update of t, o`,
+      [id, to],
+    );
+    const t = rows[0] ? toTransfer(rows[0]) : null;
+    if (!t) return { outcome: "gone" as const };
+    const { rows: org } = await tx.query<{ owner_address: string }>(`select owner_address from organizations where id = $1`, [t.orgId]);
+    if (org[0]?.owner_address.toLowerCase() !== t.from.toLowerCase()) {
+      await tx.query(`update treasury_transfers set cancelled_at = now() where id = $1`, [id]);
+      return { outcome: "stale" as const };
+    }
+    const { rows: open } = await tx.query(`select 1 from payroll_runs where org_id = $1 and status in ('pending', 'approved', 'submitted')`, [t.orgId]);
+    if (open.length) return { outcome: "open_run" as const };
+    const { rows: owned } = await tx.query<{ id: string; used: boolean }>(
+      `select o.id::text as id, ${NOT_EMPTY} as used from organizations o where lower(o.owner_address) = lower($1) and o.id <> $2`,
+      [t.to, t.orgId],
+    );
+    if (owned.some((o) => o.used)) return { outcome: "owns_company" as const };
+    for (const o of owned) await tx.query(`delete from organizations where id = $1`, [o.id]);
+
+    await tx.query(`delete from members where org_id = $1 and lower(address) = lower($2)`, [t.orgId, t.from]);
+    const { rows: promoted } = await tx.query(
+      `update members set role = 'owner' where org_id = $1 and lower(address) = lower($2) returning address`,
+      [t.orgId, t.to],
+    );
+    if (!promoted.length) {
+      await tx.query(`insert into members (org_id, address, role, added_by) values ($1, $2, 'owner', $3)`, [t.orgId, t.to, t.from]);
+    }
+    await tx.query(`update organizations set owner_address = $2 where id = $1`, [t.orgId, t.to]);
+    await tx.query(`update treasury_transfers set accepted_at = now(), signature = $2 where id = $1`, [id, signature]);
+    await tx.query(`update sessions set revoked_at = now() where org_id = $1 and lower(address) = lower($2) and revoked_at is null`, [t.orgId, t.from]);
+    return { outcome: "ok" as const, transfer: publicTransfer(t) };
+  });
 }
 
 /** The payroll rule: extra admin sign-offs, and whether two people (accounts and treasury) are required. */

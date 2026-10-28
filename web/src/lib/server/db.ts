@@ -3,9 +3,13 @@ import fs from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 
-export type Db = {
+export type Tx = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
   exec(sql: string): Promise<unknown>;
+};
+export type Db = Tx & {
+  /** Runs `fn` in one transaction: every statement commits together, or none do. */
+  transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
 };
 
 const SCHEMA = `
@@ -189,6 +193,24 @@ create table if not exists used_nonces (
 -- A Safe treasury proposes the payment instead of sending it. The proposal's id is kept until the
 -- Safe's signers execute it; the confirm step then finds the real transaction through paidBlock.
 alter table payroll_runs add column if not exists safe_tx_hash text;
+
+-- Moving a company to a new treasury wallet: the owner proposes it, the new wallet accepts it by
+-- signing the stored message. One open proposal per company; accepted or cancelled ones stay closed.
+create table if not exists treasury_transfers (
+  id uuid primary key,
+  org_id uuid not null references organizations(id) on delete cascade,
+  from_address text not null,
+  to_address text not null,
+  message text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  cancelled_at timestamptz,
+  signature text
+);
+create unique index if not exists treasury_transfers_one_open on treasury_transfers (org_id)
+  where accepted_at is null and cancelled_at is null;
+create index if not exists treasury_transfers_to on treasury_transfers (lower(to_address));
 `;
 
 async function init(): Promise<Db> {
@@ -199,6 +221,20 @@ async function init(): Promise<Db> {
     db = {
       query: async (sql, params) => pool.query(sql, params as unknown[]) as never,
       exec: (sql) => pool.query(sql),
+      transaction: async (fn) => {
+        const client = await pool.connect();
+        try {
+          await client.query("begin");
+          const result = await fn({ query: async (sql, params) => client.query(sql, params as unknown[]) as never, exec: (sql) => client.query(sql) });
+          await client.query("commit");
+          return result;
+        } catch (err) {
+          await client.query("rollback").catch(() => undefined);
+          throw err;
+        } finally {
+          client.release();
+        }
+      },
     };
   } else {
     // Embedded Postgres for local development and single-server deployments.
@@ -208,6 +244,8 @@ async function init(): Promise<Db> {
     db = {
       query: async (sql, params) => lite.query(sql, params) as never,
       exec: (sql) => lite.exec(sql),
+      // PGlite holds other queries back until the transaction ends.
+      transaction: (fn) => lite.transaction((tx) => fn({ query: async (sql, params) => tx.query(sql, params) as never, exec: (sql) => tx.exec(sql) })),
     };
   }
   await db.exec(SCHEMA);

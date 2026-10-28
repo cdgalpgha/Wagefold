@@ -25,6 +25,8 @@ export type Org = {
 export type Membership = { orgId: string; name: string; role: Role };
 export type Me = { address: string; chainId: number; org: Org; role: Role; memberships: Membership[] };
 export type Member = { address: string; name: string; role: Role; addedBy: string | null; createdAt: string };
+/** A proposal to move a company to a new treasury wallet, waiting for that wallet to accept it. */
+export type TreasuryTransfer = { id: string; orgId: string; company: string; from: string; to: string; createdAt: string; expiresAt: string };
 export type Employee = {
   id: string;
   name: string;
@@ -96,6 +98,9 @@ export type ActivityAction =
   | "member_added"
   | "member_updated"
   | "member_removed"
-  | "policy_updated";
+  | "policy_updated"
+  | "treasury_proposed"
+  | "treasury_cancelled"
+  | "treasury_changed";
 export type Activity = { id: string; at: string; actor: string; action: ActivityAction; detail: Record<string, unknown> };
 export type Records = { org: Org; runs: RunWithItems[] };

@@ -14,6 +14,7 @@ import { PayTab } from "./PayTab";
 import { PeopleTab } from "./PeopleTab";
 import { SettingsTab } from "./SettingsTab";
 import { ThemeToggle } from "./ThemeToggle";
+import { TreasuryInvites } from "./Treasury";
 import { ROLE_LABEL } from "@/lib/roles";
 import { shortAddress } from "./ui";
 
@@ -122,6 +123,7 @@ export function Dashboard({ me }: { me: Me }) {
           </nav>
         </header>
         <main className="mx-auto w-full max-w-[1120px] flex-1 px-4 pb-20 pt-7 sm:px-8 sm:pt-10">
+          <TreasuryInvites />
           {!cfg ? (
             <div className="mx-auto max-w-xl">
               <NetworkSwitcher />

@@ -59,6 +59,12 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
         tone: "neutral",
       };
     }
+    case "treasury_proposed":
+      return { title: "Proposed a new treasury wallet", detail: `${short(d.to)} has to accept with a wallet signature`, tone: "warn" };
+    case "treasury_cancelled":
+      return { title: "Cancelled the treasury change", detail: `Was to ${short(d.to)}`, tone: "neutral" };
+    case "treasury_changed":
+      return { title: "Accepted and became the treasury wallet", detail: `${short(d.from)} → ${short(d.to)} · the old treasury left the team`, tone: "warn" };
     case "run_proposed":
       return {
         title: `Approved payroll for ${Number(d.recipients) || 0} people and proposed it in the Safe`,

@@ -317,6 +317,17 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     }
   }
 
+  // Moving the treasury needs a second real wallet to accept, so the demo only shows where it lives.
+  if (path === "/api/team/treasury") {
+    member();
+    if (method === "GET") return [200, { transfer: null }];
+    throw new HttpError(400, "The demo keeps one treasury. In Wagefold, the new wallet signs in and accepts with its own signature.");
+  }
+  if (path === "/api/treasury/transfers") {
+    member();
+    return [200, { transfers: [] }];
+  }
+
   if (path === "/api/activity") {
     const s = member();
     const list = state.app.activity.filter((a) => a.orgId === s.orgId).slice(-200).reverse();

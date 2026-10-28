@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { ASSIGNABLE_ROLES, can, MAX_APPROVALS, ROLE_HELP, ROLE_LABEL, type AssignableRole } from "@/lib/roles";
 import type { Me, Member } from "@/lib/types";
 import { useTeam } from "./Approvals";
+import { TreasuryMove } from "./Treasury";
 import { copyText, useToast } from "./toast";
 import { Badge, Button, Card, CopyIcon, Field, inputClass, shortAddress } from "./ui";
 
@@ -116,6 +117,8 @@ export function TeamCard({ me }: { me: Me }) {
           </div>
         ))}
       {!isOwner && <p className="text-[13px] text-ink-2">Only the owner (the treasury wallet) can change the team or the payroll rule.</p>}
+
+      <TreasuryMove me={me} />
 
       <dl className="grid gap-2 text-[13px] sm:grid-cols-2">
         {(["owner", ...ASSIGNABLE_ROLES] as const).map((r) => (

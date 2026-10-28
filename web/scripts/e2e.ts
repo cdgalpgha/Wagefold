@@ -23,6 +23,8 @@ const KEYS = {
   admin: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
   preparer: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
   viewer: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+  newTreasury: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+  stranger: "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
 } as const;
 const RECIPIENTS = [
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
@@ -742,6 +744,78 @@ async function main() {
     await api("/api/auth/logout", { body: {} });
     assert.equal((await api("/api/employees")).status, 401);
     assert.equal((await copy("/api/employees")).status, 401);
+  });
+
+  await step("moving the treasury takes the owner's proposal and the new wallet's signature, and can't be forced", async () => {
+    const owner = client();
+    await signIn(owner, KEYS.treasury);
+    const next = client();
+    const nextAddr = (await signIn(next, KEYS.newTreasury)).address; // lands in an empty company of its own
+    const stranger = client();
+    await signIn(stranger, KEYS.stranger);
+    // Nobody but the treasury proposes, and only a real, different, unused address.
+    assert.equal((await prep("/api/team/treasury", { body: { address: nextAddr } })).status, 403);
+    assert.equal((await viewer("/api/team/treasury", { body: { address: nextAddr } })).status, 403);
+    for (const address of ["0x123", "0x0000000000000000000000000000000000000000", addr("treasury"), 7]) {
+      assert.equal((await owner("/api/team/treasury", { body: { address } })).status, 400, String(address));
+    }
+    const busy = await owner("/api/team/treasury", { body: { address: privateKeyToAccount(KEYS.otherCompany).address } });
+    assert.equal(busy.status, 409); // already runs a company with data in it
+    // Not while a payroll is in flight.
+    const r = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await submitSigned(prep, KEYS.preparer, r.id);
+    assert.equal((await owner("/api/team/treasury", { body: { address: nextAddr } })).status, 409);
+    assert.equal((await prep(`/api/runs/${r.id}/cancel`, { body: {} })).status, 200);
+
+    const first = await owner("/api/team/treasury", { body: { address: nextAddr } });
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.equal((await viewer("/api/team/treasury")).body.transfer.to, nextAddr); // the team sees it
+    const id1 = first.body.transfer.id;
+    // The wrong wallet can't read or accept it, even with a valid signature of its own.
+    assert.equal((await stranger("/api/treasury/transfers")).body.transfers.length, 0);
+    assert.equal((await stranger(`/api/treasury/transfers/${id1}`)).status, 404);
+    const { body: m1 } = await next(`/api/treasury/transfers/${id1}`);
+    assert.match(m1.message, /Wagefold treasury change/);
+    const strangerSig = await privateKeyToAccount(KEYS.stranger).signMessage({ message: m1.message });
+    assert.equal((await stranger(`/api/treasury/transfers/${id1}`, { body: { signature: strangerSig } })).status, 404);
+    assert.equal((await next(`/api/treasury/transfers/${id1}`, { body: { signature: strangerSig } })).status, 401);
+    const sig1 = await privateKeyToAccount(KEYS.newTreasury).signMessage({ message: m1.message });
+    // A new proposal replaces the old one: its signature doesn't carry over.
+    const second = await owner("/api/team/treasury", { body: { address: nextAddr } });
+    const id2 = second.body.transfer.id;
+    assert.notEqual(id1, id2);
+    assert.equal((await next(`/api/treasury/transfers/${id1}`, { body: { signature: sig1 } })).status, 404);
+    assert.equal((await next(`/api/treasury/transfers/${id2}`, { body: { signature: sig1 } })).status, 401);
+    const { body: m2 } = await next(`/api/treasury/transfers/${id2}`);
+    const sig2 = await privateKeyToAccount(KEYS.newTreasury).signMessage({ message: m2.message });
+    // Accepting is refused while a payroll is in flight, checked again at that moment.
+    const r2 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await submitSigned(prep, KEYS.preparer, r2.id);
+    assert.equal((await next(`/api/treasury/transfers/${id2}`, { body: { signature: sig2 } })).status, 409);
+    assert.equal((await prep(`/api/runs/${r2.id}/cancel`, { body: {} })).status, 200);
+
+    const accepted = await next(`/api/treasury/transfers/${id2}`, { body: { signature: sig2 } });
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+    assert.equal(accepted.body.org.ownerAddress, nextAddr);
+    const me = await next("/api/me");
+    assert.equal(me.body.role, "owner");
+    assert.equal(me.body.org.ownerAddress, nextAddr);
+    assert.equal(me.body.memberships.length, 1); // its empty company of its own is gone
+    // The old treasury is off the team and signed out, and the same signature can't be replayed.
+    assert.equal((await owner("/api/employees")).status, 401);
+    assert.equal((await next(`/api/treasury/transfers/${id2}`, { body: { signature: sig2 } })).status, 404);
+    const members = (await next("/api/team")).body.members.map((x: { address: string }) => x.address.toLowerCase());
+    assert.ok(!members.includes(addr("treasury").toLowerCase()));
+    assert.equal((await next("/api/team/treasury")).body.transfer, null);
+    const actions = (await next("/api/activity")).body.activity.map((a: { action: string }) => a.action);
+    for (const a of ["treasury_proposed", "treasury_changed"]) assert.ok(actions.includes(a), `missing ${a}`);
+    // Only the new treasury can send now.
+    const r3 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
+    await submitSigned(prep, KEYS.preparer, r3.id);
+    const tx = `0x${"77".repeat(32)}`;
+    assert.equal((await owner(`/api/runs/${r3.id}/submit`, { body: { txHash: tx } })).status, 401);
+    assert.equal((await prep(`/api/runs/${r3.id}/submit`, { body: { txHash: tx } })).status, 403);
+    assert.equal((await prep(`/api/runs/${r3.id}/cancel`, { body: {} })).status, 200);
   });
 
   console.log(`\n${passed} end-to-end checks passed`);
