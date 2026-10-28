@@ -45,6 +45,8 @@ export type Run = {
   status: RunStatus;
   failureReason: string | null;
   txHash: `0x${string}` | null;
+  /** A Safe treasury's proposal, waiting for its signers. Cleared of meaning once txHash is known. */
+  safeTxHash: string | null;
   recipientCount: number;
   totals: Record<string, string>;
   createdAt: string;
@@ -82,6 +84,7 @@ export type ActivityAction =
   | "person_removed"
   | "people_imported"
   | "run_sent"
+  | "run_proposed"
   | "run_tx_found"
   | "run_paid"
   | "run_failed"

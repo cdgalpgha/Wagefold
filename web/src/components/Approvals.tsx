@@ -1,8 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { api } from "@/lib/api";
 import { LIVE, LIVE_SLOW } from "@/lib/live";
+import { awaitingSafe } from "@/lib/safe";
 import { ROLE_LABEL } from "@/lib/roles";
 import { totalsLabel } from "@/lib/money";
 import type { Approval, Me, Member, Run } from "@/lib/types";
@@ -38,7 +40,7 @@ export function runActions(me: Me, run: Run, approvals: Approval[] = []) {
     canSend:
       isOwner && !(me.org.twoPerson && isCreator) && (run.status === "approved" || run.status === "pending") && run.approvalCount >= me.org.approvalsRequired,
     canCancel: (isCreator || isOwner) && (run.status === "pending" || run.status === "approved"),
-    canRecheck: run.status === "submitted" && !!run.txHash,
+    canRecheck: run.status === "submitted" && (!!run.txHash || !!run.safeTxHash),
     // If the wallet dropped the transaction, the treasury sends the same run again. The contract pays
     // each run once per treasury, so a resend can never pay anyone twice.
     canResend: isOwner && !(me.org.twoPerson && isCreator) && run.status === "submitted" && run.approvalCount >= me.org.approvalsRequired,
@@ -111,6 +113,7 @@ const TITLE: Partial<Record<Run["status"], string>> = {
   approved: "Signed, ready for the treasury",
   submitted: "Sent, checking the transaction",
 };
+const SAFE_TITLE = "Waiting for your Safe signers";
 
 /** The payroll currently in flight, on the Pay home screen, with the actions this person can take. */
 export function OpenRunCard({
@@ -134,8 +137,26 @@ export function OpenRunCard({
   const a = runActions(me, run, approvals);
   const need = me.org.approvalsRequired;
   const left = Math.max(0, need - run.approvalCount);
+  const safe = awaitingSafe(run);
+  // Nobody has to keep a tab open for a Safe: anyone signed in checks now and then, and the server
+  // records the payment as soon as the Safe has executed it.
+  const queryClient = useQueryClient();
+  const safeCheck = useQuery({
+    queryKey: ["safe-check", run.id],
+    queryFn: () => api<{ run: Run }>(`/api/runs/${run.id}/confirm`, { body: {} }),
+    enabled: safe,
+    ...LIVE_SLOW,
+  });
+  const checked = safeCheck.data?.run;
+  useEffect(() => {
+    if (checked && !awaitingSafe(checked)) queryClient.invalidateQueries({ queryKey: ["runs"] });
+  }, [checked, queryClient]);
   const note =
-    run.status === "submitted"
+    safe
+      ? a.canResend
+        ? "The payment is proposed in your Safe. Once enough signers approve and execute it there, Wagefold finds it on-chain and checks every payment. If your signers rejected it, send it again: a payroll can only be paid once, so nobody is paid twice."
+        : "The treasury proposed this payment in its Safe. Wagefold marks it paid once the Safe's signers execute it and it checks out on-chain."
+      : run.status === "submitted"
       ? a.canResend
         ? "You sent this payroll. Wagefold marks it paid once the transaction checks out on-chain. If your wallet dropped it, send it again: a payroll can only be paid once, so nobody is paid twice."
         : "The treasury sent this payroll. Wagefold marks it paid once the transaction checks out on-chain."
@@ -159,7 +180,7 @@ export function OpenRunCard({
         <div className="flex flex-1 basis-64 flex-col gap-1">
           <span className="text-sm font-medium text-ink-2">Payroll prepared by {nameOf(run.createdBy)}</span>
           <h1 className="text-[28px] leading-tight sm:text-[34px]">
-            {run.status === "submitted" ? TITLE.submitted : left === 0 ? TITLE.approved : TITLE.pending}
+            {safe ? SAFE_TITLE : run.status === "submitted" ? TITLE.submitted : left === 0 ? TITLE.approved : TITLE.pending}
           </h1>
           <p className="tabular text-base text-ink-2">
             {run.recipientCount} {run.recipientCount === 1 ? "person" : "people"} · {totalsLabel(run.totals)}
@@ -180,7 +201,7 @@ export function OpenRunCard({
           <Button size="lg" onClick={() => onOpen("send")} disabled={busy}>Review, approve and send</Button>
         )}
         {a.canRecheck && (
-          <Button size="lg" onClick={onRecheck} disabled={busy}>{busy ? <Spinner /> : null}Check the transaction</Button>
+          <Button size="lg" onClick={onRecheck} disabled={busy}>{busy ? <Spinner /> : null}{safe ? "Check the Safe" : "Check the transaction"}</Button>
         )}
         {a.canResend && (
           <Button variant="secondary" onClick={() => onOpen("send")} disabled={busy}>Send again</Button>

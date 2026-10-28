@@ -9,6 +9,7 @@ const run = (id: string, paidAt: string, usdRates: Run["usdRates"] = null): Run 
   status: "confirmed",
   failureReason: null,
   txHash: `0x${id.padStart(64, "a")}`,
+  safeTxHash: null,
   recipientCount: 2,
   totals: {},
   createdAt: paidAt,

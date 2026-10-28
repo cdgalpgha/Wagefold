@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { getChainConfig, type ChainConfig } from "@/lib/chains";
 import { friendlyError } from "@/lib/errors";
 import { buildPayments, requiredAllowances, type RunItem } from "@/lib/payments";
+import { awaitingSafe, isSafeTreasury } from "@/lib/safe";
 import type { RunReview } from "@/lib/changes";
 import type { NewRun, Run, RunDetail } from "@/lib/types";
 
@@ -23,6 +24,7 @@ export type Phase =
   | { kind: "confirm"; run: Run; items: RunItem[]; batched: boolean }
   | { kind: "sending"; run: Run; items: RunItem[]; txHash?: Hex }
   | { kind: "verifying"; run: Run; items: RunItem[]; txHash?: Hex }
+  | { kind: "safe"; run: Run; items: RunItem[] }
   | { kind: "done"; run: Run; items: RunItem[] }
   | { kind: "failed"; run: Run; items: RunItem[] }
   | { kind: "error"; message: string; run?: Run; items?: RunItem[] };
@@ -35,7 +37,7 @@ function symbolOf(cfg: ChainConfig, token: Address): string {
 
 /** Drives one payroll run: pull from People, check funds, approve, pay, then verify on the server. */
 export function usePayroll() {
-  const { address, chainId } = useAccount();
+  const { address, chainId, connector } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
@@ -108,11 +110,12 @@ export function usePayroll() {
 
   /** Re-checks a run that was sent but not yet verified (for example after closing the tab mid-way). */
   const recheck = useCallback(async (run: Run, items: RunItem[]) => {
-    setPhase({ kind: "verifying", run, items, txHash: run.txHash! });
+    setPhase({ kind: "verifying", run, items, txHash: run.txHash ?? undefined });
     try {
       const res = await api<{ run: Run; pending?: boolean }>(`/api/runs/${run.id}/confirm`, { body: {} });
       if (res.run.status === "confirmed") return setPhase({ kind: "done", run: res.run, items });
       if (res.run.status === "failed") return setPhase({ kind: "failed", run: res.run, items });
+      if (awaitingSafe(res.run)) return setPhase({ kind: "safe", run: res.run, items });
       setPhase({ kind: "error", message: "The transaction isn't confirmed yet. Try again in a minute." });
     } catch (err) {
       setPhase({ kind: "error", message: friendlyError(err) });
@@ -157,6 +160,13 @@ export function usePayroll() {
 
         const payData = encodeFunctionData({ abi: payrollAbi, functionName: "pay", args: [run.onchainRef, payments] });
         let txHash: Hex | undefined;
+        // A Safe treasury proposes the payment to its signers. Record the proposal and stop there: the
+        // server finds the real transaction through the contract's paidBlock once the Safe executes it.
+        const safe = await isSafeTreasury(publicClient, address, connector?.id);
+        const proposed = async (safeTxHash: string) => {
+          const { run: sent } = await api<{ run: Run }>(`/api/runs/${run.id}/submit`, { body: { safeTxHash, verifiedWallets } });
+          setPhase({ kind: "safe", run: sent, items });
+        };
 
         // 2a. Wallets that support atomic batches (EIP-5792) approve and pay with one confirmation.
         if (approvals.length && (await supportsAtomicBatch(walletClient, address, run.chainId))) {
@@ -169,11 +179,18 @@ export function usePayroll() {
             { to: cfg.payroll, data: payData },
           ];
           const { id } = await walletClient.sendCalls({ account: address, chain: cfg.chain, calls, forceAtomic: true });
+          if (safe) return await proposed(id);
           setPhase({ kind: "sending", run, items });
           const status = await walletClient.waitForCallsStatus({ id, timeout: 120_000 });
           txHash = status.receipts?.at(-1)?.transactionHash;
           if (status.status !== "success" || !txHash) throw new Error("The wallet didn't complete the payment.");
         } else {
+          // A Safe can't approve and pay one after the other here: each approval waits for its signers.
+          if (safe && approvals.length) {
+            throw new Error(
+              `Your Safe first has to allow the payroll contract to spend ${approvals.map((a) => symbolOf(cfg, a.token)).join(" and ")}. Approve that in your Safe, then send again.`,
+            );
+          }
           // 2b. Otherwise approve each token for exactly what this run needs, then pay.
           for (const [i, a] of approvals.entries()) {
             setPhase({ kind: "approving", run, items, symbol: symbolOf(cfg, a.token), step: i + 1, steps: approvals.length });
@@ -194,6 +211,7 @@ export function usePayroll() {
             address: cfg.payroll, abi: payrollAbi, functionName: "pay", args: [run.onchainRef, payments], account: address,
           });
           txHash = await walletClient.writeContract(request);
+          if (safe) return await proposed(txHash);
         }
 
         // 3. Record the hash, wait for the block, then let the server check the chain itself.
@@ -212,7 +230,7 @@ export function usePayroll() {
         setPhase({ kind: "error", message: friendlyError(err), run, items });
       }
     },
-    [address, chainId, publicClient, walletClient],
+    [address, chainId, connector, publicClient, walletClient],
   );
 
   return { phase, prepare, open, request, approve, reject, cancel, recheck, send, reset };

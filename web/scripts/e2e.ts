@@ -129,6 +129,17 @@ async function step(name: string, fn: () => Promise<void>) {
 async function main() {
   console.log(`Wagefold end-to-end against ${BASE}`);
   const api = client();
+  // A long-running local chain drains the treasury over many runs: top it up (the mock tokens let anyone mint).
+  const funder = createWalletClient({ account: privateKeyToAccount(KEYS.treasury), chain: hardhat, transport: http() });
+  for (const t of [cfg.tokens.USDC!, cfg.tokens.USDT!]) {
+    const h = await funder.writeContract({
+      address: t.address,
+      abi: [{ type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [] }] as const,
+      functionName: "mint",
+      args: [funder.account.address, 100_000_000_000n],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: h });
+  }
   const startBalances = await Promise.all([
     balance(cfg.tokens.USDC!.address, RECIPIENTS[0]),
     balance(cfg.tokens.USDC!.address, RECIPIENTS[1]),
@@ -675,6 +686,33 @@ async function main() {
     assert.equal(detail.body.run.createdBy, addr("preparer"));
     assert.equal(detail.body.run.submittedBy, addr("treasury"));
     assert.match(detail.body.run.preparedSignature, /^0x/);
+  });
+
+  await step("a Safe treasury's proposal waits for its signers, then is found on-chain and verified", async () => {
+    const r = (await prep("/api/runs", { body: { chainId: 31337 } })).body;
+    await submitSigned(prep, KEYS.preparer, r.run.id);
+    const safeTxHash = `0x${"5a".repeat(32)}`;
+    // Only the treasury records a proposal, and only a well-formed one.
+    assert.equal((await prep(`/api/runs/${r.run.id}/submit`, { body: { safeTxHash } })).status, 403);
+    for (const bad of ["<img src=x onerror=alert(1)>", "x".repeat(200), 42, ""]) {
+      assert.equal((await api(`/api/runs/${r.run.id}/submit`, { body: { safeTxHash: bad } })).status, 400, String(bad));
+    }
+    const proposed = await api(`/api/runs/${r.run.id}/submit`, { body: { safeTxHash } });
+    assert.equal(proposed.status, 200, JSON.stringify(proposed.body));
+    assert.equal(proposed.body.run.status, "submitted");
+    assert.equal(proposed.body.run.txHash, null);
+    assert.equal(proposed.body.run.safeTxHash, safeTxHash);
+    // Nothing executed yet: still waiting, never marked paid or failed.
+    const waiting = await viewer(`/api/runs/${r.run.id}/confirm`, { body: {} });
+    assert.equal(waiting.status, 202);
+    assert.equal(waiting.body.run.status, "submitted");
+    // The signers execute it (here the treasury pays directly): the server finds it through paidBlock.
+    const tx = await pay(KEYS.treasury, r.run.onchainRef, r.items);
+    const confirmed = await viewer(`/api/runs/${r.run.id}/confirm`, { body: {} });
+    assert.equal(confirmed.body.run.status, "confirmed", JSON.stringify(confirmed.body));
+    assert.equal(confirmed.body.run.txHash, tx);
+    const actions = (await api("/api/activity")).body.activity.map((a: { action: string }) => a.action);
+    assert.ok(actions.includes("run_proposed") && actions.includes("run_tx_found"));
   });
 
   await step("another company's wallet can't see this team", async () => {

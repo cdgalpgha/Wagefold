@@ -505,11 +505,29 @@
                 "properties": {
                   "txHash": {
                     "type": "string"
+                  },
+                  "safeTxHash": {
+                    "type": "string"
+                  },
+                  "verifiedWallets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               },
-              "example": {
-                "txHash": "0xabababababababababababababababababababababababababababababababab"
+              "examples": {
+                "sent": {
+                  "value": {
+                    "txHash": "0xabababababababababababababababababababababababababababababababab"
+                  }
+                },
+                "safe": {
+                  "value": {
+                    "safeTxHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+                  }
+                }
               }
             }
           }

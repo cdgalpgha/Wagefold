@@ -43,7 +43,7 @@ export function PayTab({
 
   useEffect(() => {
     // Any finished step can change the run list, approvals and invoices.
-    if (phase.kind === "idle" || phase.kind === "done" || phase.kind === "failed") {
+    if (phase.kind === "idle" || phase.kind === "done" || phase.kind === "failed" || phase.kind === "safe") {
       queryClient.invalidateQueries({ queryKey: ["runs"] });
       queryClient.invalidateQueries({ queryKey: ["run"] });
       queryClient.invalidateQueries({ queryKey: ["activity"] });
@@ -120,6 +120,8 @@ export function PayTab({
     case "sending":
     case "verifying":
       return <Progress phase={phase} />;
+    case "safe":
+      return <SafeWaiting run={phase.run} items={phase.items} onBack={reset} />;
     case "done":
       return <Done run={phase.run} items={phase.items} onBack={reset} onOpenHistory={onOpenHistory} />;
     case "failed":
@@ -916,6 +918,31 @@ function Done({ run, items, onBack, onOpenHistory }: { run: Run; items: RunItem[
         ))}
       </Card>
     </div>
+  );
+}
+
+/** The treasury is a Safe: the payment is proposed and waits for its signers, not for a block. */
+function SafeWaiting({ run, items, onBack }: { run: Run; items: RunItem[]; onBack: () => void }) {
+  return (
+    <Card className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-5 rounded-xl p-9 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-soft text-brand">
+        <Spinner className="h-7 w-7" />
+      </span>
+      <div role="status">
+        <h1 className="text-[26px] font-semibold">Waiting for your Safe signers</h1>
+        <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
+          The payment to {items.length} {items.length === 1 ? "person" : "people"} ({totalsLabel(run.totals)}) is proposed in your Safe.
+          Once enough signers approve and execute it there, Wagefold finds the transaction on-chain and checks every payment.
+          You can close this page.
+        </p>
+      </div>
+      {run.safeTxHash && (
+        <span className="max-w-full truncate rounded-md bg-line-soft px-2 py-1 font-mono text-[13px]" title={run.safeTxHash}>
+          Safe transaction {run.safeTxHash.length > 20 ? `${run.safeTxHash.slice(0, 10)}…${run.safeTxHash.slice(-6)}` : run.safeTxHash}
+        </span>
+      )}
+      <Button variant="secondary" onClick={onBack}>Back to Pay</Button>
+    </Card>
   );
 }
 

@@ -40,6 +40,7 @@ type RunRow = {
   status: RunStatus;
   failure_reason: string | null;
   tx_hash: string | null;
+  safe_tx_hash: string | null;
   recipient_count: number;
   totals: Record<string, string> | string;
   created_at: Date | string;
@@ -68,6 +69,7 @@ const toRun = (r: RunRow): Run => ({
   status: r.status,
   failureReason: r.failure_reason,
   txHash: r.tx_hash as `0x${string}` | null,
+  safeTxHash: r.safe_tx_hash,
   recipientCount: r.recipient_count,
   totals: typeof r.totals === "string" ? JSON.parse(r.totals) : r.totals,
   createdAt: iso(r.created_at)!,
@@ -345,7 +347,7 @@ export async function deleteEmployee(orgId: string, id: string): Promise<Employe
 const VALID_APPROVALS = `(select count(*) from run_approvals a join members m on m.org_id = payroll_runs.org_id and lower(m.address) = lower(a.approver)
      and m.role in ('owner', 'admin') where a.run_id = payroll_runs.id)`;
 
-const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, recipient_count, totals, created_at, confirmed_at,
+const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, safe_tx_hash, recipient_count, totals, created_at, confirmed_at,
   paid_at, block_number::text as block_number, network_fee_wei::text as network_fee_wei, usd_rates,
   created_by, requested_at, submitted_by, rejection, prepared_signature,
   ${VALID_APPROVALS} as approval_count`;
@@ -458,14 +460,16 @@ export async function listRuns(orgId: string): Promise<Run[]> {
 export async function markRunSubmitted(
   orgId: string,
   id: string,
-  txHash: string,
+  sent: { txHash: string } | { safeTxHash: string },
   submittedBy: string,
   verifiedWallets: string[] | null,
 ): Promise<Run | null> {
   const db = await getDb();
+  const txHash = "txHash" in sent ? sent.txHash : null;
+  const safeTxHash = "safeTxHash" in sent ? sent.safeTxHash : null;
   try {
     const { rows } = await db.query<RunRow>(
-      `update payroll_runs set status = 'submitted', tx_hash = $3, submitted_at = now(), submitted_by = $4,
+      `update payroll_runs set status = 'submitted', tx_hash = $3, safe_tx_hash = $6, submitted_at = now(), submitted_by = $4,
          verified_wallets = coalesce(verified_wallets, $5::jsonb)
        where org_id = $1 and id = $2
          and (status in ('pending', 'approved', 'submitted')
@@ -476,7 +480,7 @@ export async function markRunSubmitted(
          and (${SOLO} or lower(coalesce(created_by, '')) <> lower($4))
          and (lower(coalesce(created_by, '')) = lower($4) or prepared_signature is not null)
        returning ${RUN_COLUMNS}`,
-      [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null],
+      [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null, safeTxHash],
     );
     return rows[0] ? toRun(rows[0]) : null;
   } catch (err) {

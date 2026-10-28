@@ -185,6 +185,10 @@ create table if not exists used_nonces (
   nonce text primary key,
   expires_at timestamptz not null
 );
+
+-- A Safe treasury proposes the payment instead of sending it. The proposal's id is kept until the
+-- Safe's signers execute it; the confirm step then finds the real transaction through paidBlock.
+alter table payroll_runs add column if not exists safe_tx_hash text;
 `;
 
 async function init(): Promise<Db> {

@@ -59,6 +59,12 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
         tone: "neutral",
       };
     }
+    case "run_proposed":
+      return {
+        title: `Approved payroll for ${Number(d.recipients) || 0} people and proposed it in the Safe`,
+        detail: "Waiting for the Safe's signers to execute it",
+        tone: "neutral",
+      };
     case "run_paid":
       return { title: "Payroll verified on-chain", detail: `Transaction ${short(d.txHash)}`, tone: "good" };
     case "run_failed":

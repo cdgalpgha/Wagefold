@@ -68,6 +68,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
   }
+  // A Safe proposal its signers haven't executed yet: nothing on-chain to check until they do.
+  if (run.status === "submitted" && !run.txHash && run.safeTxHash) return json({ run, pending: true }, 202);
   if (run.status !== "submitted" || !run.txHash) return fail("This run hasn't been sent yet.", 409);
   if (!receipt) return json({ run, pending: true }, 202);
   const depth = CONFIRMATIONS[run.chainId] ?? 0n;

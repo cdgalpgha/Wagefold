@@ -415,6 +415,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
         status: "draft",
         failureReason: null,
         txHash: null,
+        safeTxHash: null,
         recipientCount: team.length,
         totals: Object.fromEntries(TOKEN_SYMBOLS.filter((t) => sums[t] > 0n).map((t) => [t, formatUnits(sums[t], TOKEN_DECIMALS)])),
         createdAt: new Date().toISOString(),
