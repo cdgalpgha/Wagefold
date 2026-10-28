@@ -1,6 +1,22 @@
 # Security review, October 2026
 
-Two passes, plus a follow-up: an automated review with scanners (22 October, below the first divider), a manual audit of the code and repository (26 October), and the two-person payroll rule (28 October, first). Each issue found is fixed and covered by an end-to-end test that performs the attack.
+Two passes, plus a follow-up: an automated review with scanners (22 October, below the first divider), a manual audit of the code and repository (26 October), the two-person payroll rule and the launch hardening (28 October, first). Each issue found is fixed and covered by an end-to-end test that performs the attack.
+
+## Launch hardening, 28 October 2026
+
+Eight changes ahead of going live (launch plan tasks 7–14). The ones that touch security:
+
+| Change | Controls | Test |
+|---|---|---|
+| **Treasury rotation** | Only the current treasury proposes; the new wallet accepts by signing a server-built message naming the exact proposal (ERC-1271 aware). One transaction moves ownership, removes the old treasury from the team and revokes its sessions, and closes the proposal. Refused while a payroll is open (checked at proposal and at acceptance) and for a wallet that already runs a company in use | Non-owners proposing (403), bad or own address (400), wrong wallet reading or accepting (404), another key's signature (401), a replaced proposal's signature (404/401), replay after acceptance (404), old treasury signed out and unable to send |
+| **Safe treasury** | A Safe proposal is recorded as `safe_tx_hash`, never as a transaction hash; the run stays unpaid until the server finds the executed payment through `paidBlock` and checks every payment as before. Only the treasury can record a proposal; the id is length- and charset-checked | Non-owner (403), markup and oversized ids (400), pending stays pending (202), verified once executed |
+| **Rate limits** | Sign-in and payment checks answer 429 with `Retry-After`. Keyed by session, then by client IP only with `TRUST_PROXY=1`; otherwise anonymous requests share one allowance, because Next.js passes a client-written `X-Forwarded-For` through. Bounded in-memory table | Per-IP sign-in limit, per-session confirm limit, other clients unaffected |
+| **Health and logs** | `/api/health` is public but returns only status, timings and block numbers, cached 10 s so it can't drain the RPC quota. Error logs are JSON with RPC URLs cut to their host (provider keys live in the path), and never include headers, cookies or bodies. Sentry is optional, server-side, no browser SDK, CSP unchanged | Unit tests for redaction and the Sentry envelope; e2e checks the health body holds no URLs or keys |
+| **Migrations** | Each migration runs in one transaction with its record, behind an advisory lock; an edited shipped migration is logged | In-memory Postgres tests, plus a database made before this change |
+
+Re-scan: 78 unit and 46 end-to-end checks pass; Semgrep 0 findings on every task; ZAP authenticated API scan of all 26 API paths, 113 passed, 0 failed, 0 server errors.
+
+**Residual risk.** A Safe proposal its signers neither execute nor reject keeps the run open. The treasury can send it again (the contract pays a run once, so a second proposal can't double-pay), but should reject the stale one in the Safe too. Rate limits are per process; several instances need a limiter at the proxy as well (README).
 
 ## Two-person payroll, 28 October 2026
 
