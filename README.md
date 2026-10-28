@@ -157,6 +157,8 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
    - `DATABASE_URL`: a hosted Postgres URL. The embedded database only suits a single long-running server, not serverless.
    - `NEXT_PUBLIC_PAYROLL_ADDRESS_8453` (and/or `_84532`): the deployed contract
    - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: from WalletConnect Cloud, to enable Trust Wallet and other phone wallets
+   - `RPC_URL_8453` (and/or `_84532`): your RPC provider's URL for the server, which verifies sign-ins and payments
+   - `NEXT_PUBLIC_RPC_URL_8453` (and/or `_84532`): optional browser RPC. The browser tries it first and falls back to Base's public endpoint. Every visitor can see it, so use a separate key restricted to your domain
    - `NEXT_PUBLIC_USDT_ADDRESS_8453`: USDT on Base. Verify the address yourself before setting it; USDC on Base and Base Sepolia are built in.
 
 ## USD rates

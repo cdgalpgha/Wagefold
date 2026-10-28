@@ -1,8 +1,9 @@
-import { http, createConfig } from "wagmi";
+import { createConfig } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
 import { coinbaseWallet, injected, safe, walletConnect } from "wagmi/connectors";
 import type { Chain } from "viem";
 import { SUPPORTED } from "./chains";
+import { transportFor } from "./rpc";
 
 const configured = SUPPORTED.map((c) => c.chain);
 // wagmi needs at least one chain; the UI explains when no payroll contract is configured yet.
@@ -31,7 +32,7 @@ export const wagmiConfig = createConfig({
       : []),
     safe(),
   ],
-  transports: Object.fromEntries(chains.map((c) => [c.id, http()])),
+  transports: Object.fromEntries(chains.map((c) => [c.id, transportFor(c.id)])),
 });
 
 declare module "wagmi" {
