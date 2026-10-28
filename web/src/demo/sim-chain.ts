@@ -34,10 +34,10 @@ const treasury = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478
 const approver = privateKeyToAccount("0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e");
 export const TREASURY = treasury.address;
 export const APPROVER = approver.address;
-/** The test wallet holds two accounts so the demo can show approvals: the treasury, and an approver. */
+/** The test wallet holds two accounts so the demo can show two-person payroll: the treasury, and the accounts team. */
 export const DEMO_ACCOUNTS = {
   treasury: { account: treasury, label: "Treasury (owner)" },
-  approver: { account: approver, label: "Dana Okafor (CFO, approver)" },
+  approver: { account: approver, label: "Dana Okafor (accounts team)" },
 } as const;
 export type DemoAccount = keyof typeof DEMO_ACCOUNTS;
 const START = { USDC: 250_000_000_000n, USDT: 60_000_000_000n };
@@ -326,8 +326,10 @@ export class SimChain {
             { label: "Message", value: safeText(message) },
           ],
           note: safeText(message).startsWith("Wagefold payroll approval")
-            ? "This approves exactly the payroll described above. It doesn't move funds or cost gas."
-            : "Signing proves this wallet is yours. It doesn't move funds or cost gas.",
+            ? "This signs off exactly the payroll described above. It doesn't move funds or cost gas."
+            : safeText(message).startsWith("Wagefold payroll, prepared")
+              ? "This submits exactly the payroll described above to the treasury. It doesn't move funds or cost gas."
+              : "Signing proves this wallet is yours. It doesn't move funds or cost gas.",
           confirmLabel: "Sign",
         });
         return this.current.signMessage({ message: { raw: message } });

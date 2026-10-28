@@ -9,7 +9,7 @@ import { useTeam } from "./Approvals";
 import { copyText, useToast } from "./toast";
 import { Badge, Button, Card, CopyIcon, Field, inputClass, shortAddress } from "./ui";
 
-/** Team members, their roles, and how many approvals a payroll needs. Only the owner can change any of it. */
+/** Team members, their roles, and the payroll rule. Only the owner can change any of it. */
 export function TeamCard({ me }: { me: Me }) {
   const team = useTeam();
   const queryClient = useQueryClient();
@@ -18,6 +18,7 @@ export function TeamCard({ me }: { me: Me }) {
   const members = team.data?.members ?? [];
   const approvers = members.filter((m) => can(m.role, "approve")).length;
   const maxRule = Math.min(MAX_APPROVALS, Math.max(0, approvers - 1));
+  const accounts = members.filter((m) => m.role !== "owner" && can(m.role, "prepare")).length;
   const [adding, setAdding] = useState(false);
 
   const refresh = async () => {
@@ -37,32 +38,57 @@ export function TeamCard({ me }: { me: Me }) {
   return (
     <Card className="flex flex-col gap-5 p-5 sm:p-6">
       <div>
-        <h2 className="text-base font-semibold">Team and approvals</h2>
+        <h2 className="text-base font-semibold">Team and signatures</h2>
         <p className="mt-1 text-sm leading-relaxed text-ink-2">
-          Everyone signs in with their own wallet. Approvers sign off on each payroll with a wallet signature before the treasury can send it, and
-          whoever prepared a payroll can never approve it.
+          Everyone signs in with their own wallet. Your accounts team prepares each payroll and signs it; the treasury reviews it and approves it by
+          sending. Whoever prepared a payroll can never send or sign it off.
         </p>
       </div>
 
+      <label className={`flex items-start gap-3 rounded-xl border p-4 ${me.org.twoPerson ? "border-brand/40 bg-brand-soft/40" : "border-warn-line bg-warn-soft"}`}>
+        <input
+          type="checkbox"
+          className="mt-0.5 h-5 w-5 flex-none accent-brand"
+          checked={me.org.twoPerson}
+          disabled={!isOwner}
+          onChange={(e) =>
+            run(
+              () => api("/api/team/policy", { method: "PATCH", body: { twoPerson: e.target.checked } }),
+              e.target.checked ? "Two-person payroll is on" : "Two-person payroll is off: the treasury can pay alone",
+            )
+          }
+        />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold">Two-person payroll (recommended)</span>
+          <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-2">
+            {me.org.twoPerson
+              ? accounts > 0
+                ? "On: your accounts team prepares and signs each payroll, and the treasury approves it by sending. Nobody can pay alone."
+                : "On: add your accounts team below as a Preparer or Admin. They prepare and sign each payroll; you approve it by sending."
+              : "Off: the treasury can prepare and send payroll alone. Turn it on as soon as someone else can prepare payroll."}
+          </span>
+        </span>
+      </label>
+
       <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-2 p-4">
         <div className="flex-1 basis-60">
-          <p className="text-sm font-semibold">Approvals needed before payroll can be sent</p>
+          <p className="text-sm font-semibold">Extra sign-offs before the treasury</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
             {me.org.approvalsRequired === 0
-              ? "Off: the treasury wallet can send payroll without anyone else signing off."
-              : `${me.org.approvalsRequired} of the ${approvers} people who can approve (owner and admins).`}
-            {isOwner && maxRule < 1 && " Add an admin to turn approvals on."}
+              ? "None: a signed payroll goes straight to the treasury. Add sign-offs if an admin should also check each one."
+              : `${me.org.approvalsRequired} of the ${approvers} people who can sign off (owner and admins) check each payroll before the treasury.`}
+            {isOwner && maxRule < 1 && " Add an admin to use extra sign-offs."}
           </p>
         </div>
         <select
-          aria-label="Approvals needed"
+          aria-label="Extra sign-offs"
           disabled={!isOwner}
           value={me.org.approvalsRequired}
-          onChange={(e) => run(() => api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: Number(e.target.value) } }), "Approval rule updated")}
+          onChange={(e) => run(() => api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: Number(e.target.value) } }), "Sign-offs updated")}
           className="min-h-11 rounded-[10px] border border-line-strong bg-surface px-3 text-[15px] text-ink disabled:opacity-70"
         >
           {Array.from({ length: Math.max(maxRule, me.org.approvalsRequired) + 1 }, (_, n) => (
-            <option key={n} value={n}>{n === 0 ? "No approvals" : `${n} approval${n === 1 ? "" : "s"}`}</option>
+            <option key={n} value={n}>{n === 0 ? "None" : `${n} sign-off${n === 1 ? "" : "s"}`}</option>
           ))}
         </select>
       </div>
@@ -89,7 +115,7 @@ export function TeamCard({ me }: { me: Me }) {
             <Button variant="secondary" onClick={() => setAdding(true)}>Add a teammate</Button>
           </div>
         ))}
-      {!isOwner && <p className="text-[13px] text-ink-2">Only the owner (the treasury wallet) can change the team or the approval rule.</p>}
+      {!isOwner && <p className="text-[13px] text-ink-2">Only the owner (the treasury wallet) can change the team or the payroll rule.</p>}
 
       <dl className="grid gap-2 text-[13px] sm:grid-cols-2">
         {(["owner", ...ASSIGNABLE_ROLES] as const).map((r) => (

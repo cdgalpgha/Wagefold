@@ -152,5 +152,9 @@ export const memberPatchInput = z
   .strict();
 
 export const policyInput = z
-  .object({ approvalsRequired: z.number().int().min(0).max(MAX_APPROVALS, `Up to ${MAX_APPROVALS} approvals.`) })
-  .strict();
+  .object({
+    approvalsRequired: z.number().int().min(0).max(MAX_APPROVALS, `Up to ${MAX_APPROVALS} approvals.`).optional(),
+    twoPerson: z.boolean().optional(),
+  })
+  .strict()
+  .refine((p) => p.approvalsRequired !== undefined || p.twoPerson !== undefined, "Nothing to change.");

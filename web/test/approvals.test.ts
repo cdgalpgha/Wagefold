@@ -3,7 +3,7 @@ import { getAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { verifyMessage } from "viem";
-import { approvalMessage, paymentsHash } from "@/lib/approvals";
+import { approvalMessage, paymentsHash, preparedMessage } from "@/lib/approvals";
 import type { ChainConfig } from "@/lib/chains";
 import type { RunItem } from "@/lib/payments";
 import { can, ROLES } from "@/lib/roles";
@@ -65,6 +65,22 @@ describe("approval message", () => {
     expect(await verifyMessage({ address: approver.address, message, signature })).toBe(true);
     expect(await verifyMessage({ address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", message, signature })).toBe(false);
     expect(await verifyMessage({ address: approver.address, message: approvalMessage({ ...subject, runId: "run-2" }), signature })).toBe(false);
+  });
+});
+
+describe("prepared message (the accounts team's signature)", () => {
+  it("names the same run, totals and payments hash, signed as the preparer", () => {
+    const m = preparedMessage(subject);
+    expect(m.startsWith("Wagefold payroll, prepared for the treasury")).toBe(true);
+    expect(m).toContain("Pay 2 people 21,900.50 USDC");
+    expect(m).toContain(`Payments hash: ${paymentsHash(ref, items, cfg)}`);
+    expect(m).toContain(`Prepared by: ${approver.address}`);
+  });
+
+  it("can never be mistaken for, or reused as, an approval", async () => {
+    expect(preparedMessage(subject)).not.toBe(approvalMessage(subject));
+    const signature = await approver.signMessage({ message: preparedMessage(subject) });
+    expect(await verifyMessage({ address: approver.address, message: approvalMessage(subject), signature })).toBe(false);
   });
 });
 

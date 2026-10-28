@@ -28,10 +28,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!run) {
     const open = await openRun(session.orgId);
     if (open && open.id !== id) return fail(new OpenRunError().message, 409);
+    if (org.twoPerson && found.run.createdBy?.toLowerCase() === session.address.toLowerCase()) {
+      return fail("Two-person payroll is on, so the treasury can't send a payroll it prepared. Your accounts team prepares it.", 403);
+    }
+    if (org.twoPerson && found.run.status === "draft") return fail("Your accounts team has to sign and submit this payroll first.", 409);
     const needs = org.approvalsRequired;
     return fail(
       needs > 0 && found.run.approvalCount < needs
-        ? `This payroll needs ${needs} approval${needs === 1 ? "" : "s"} before it can be sent (it has ${found.run.approvalCount}).`
+        ? `This payroll needs ${needs} sign-off${needs === 1 ? "" : "s"} before it can be sent (it has ${found.run.approvalCount}).`
         : "This run was already sent, cancelled, or doesn't exist.",
       409,
     );

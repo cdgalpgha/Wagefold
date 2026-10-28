@@ -1,7 +1,7 @@
 {
   "name": "Wagefold",
   "short_name": "Wagefold",
-  "description": "Pay your whole team in USDC or USDT with one signature.",
+  "description": "Accounts signs, treasury sends: one transaction pays your whole team in USDC or USDT.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#EBEFE8",

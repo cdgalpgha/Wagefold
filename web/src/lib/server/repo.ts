@@ -53,6 +53,7 @@ type RunRow = {
   submitted_by: string | null;
   rejection: Run["rejection"] | string | null;
   approval_count: number | string;
+  prepared_signature: string | null;
 };
 
 const json = <T>(v: T | string | null): T | null => (typeof v === "string" ? (JSON.parse(v) as T) : v);
@@ -80,6 +81,7 @@ const toRun = (r: RunRow): Run => ({
   submittedBy: r.submitted_by,
   approvalCount: Number(r.approval_count),
   rejection: json(r.rejection),
+  preparedSignature: r.prepared_signature,
 });
 
 export class DuplicateWalletError extends Error {}
@@ -88,6 +90,9 @@ export class OpenRunError extends Error {
     super("Another payroll is already waiting for approval or being sent. Finish or cancel it first.");
   }
 }
+
+/** The company runs payroll alone: two-person payroll is off. */
+const SOLO = `not (select two_person from organizations where id = $1)`;
 
 /** No other run of this company is in flight. Also enforced by a unique index (db.ts). */
 const NO_OTHER_OPEN_RUN = `not exists (select 1 from payroll_runs o where o.org_id = $1 and o.id <> $2
@@ -110,8 +115,9 @@ type OrgRow = {
   invoice_prefix: string;
   invoice_note: string | null;
   approvals_required: number;
+  two_person: boolean;
 };
-const ORG_COLUMNS = `id, owner_address, name, pay_day, legal_name, address, tax_id, invoice_prefix, invoice_note, approvals_required`;
+const ORG_COLUMNS = `id, owner_address, name, pay_day, legal_name, address, tax_id, invoice_prefix, invoice_note, approvals_required, two_person`;
 const toOrg = (r: OrgRow): Organization => ({
   id: r.id,
   ownerAddress: r.owner_address,
@@ -123,6 +129,7 @@ const toOrg = (r: OrgRow): Organization => ({
   invoicePrefix: r.invoice_prefix,
   invoiceNote: r.invoice_note,
   approvalsRequired: r.approvals_required,
+  twoPerson: r.two_person,
 });
 
 /** The company this wallet owns, created on first sign-in, with the wallet as its owner member. */
@@ -212,9 +219,14 @@ export async function removeMember(orgId: string, address: string): Promise<Memb
   return rows[0] ? toMember(rows[0]) : null;
 }
 
-export async function setApprovalsRequired(orgId: string, n: number): Promise<Organization | null> {
+/** The payroll rule: extra admin sign-offs, and whether two people (accounts and treasury) are required. */
+export async function setPolicy(orgId: string, policy: { approvalsRequired?: number; twoPerson?: boolean }): Promise<Organization | null> {
   const db = await getDb();
-  const { rows } = await db.query<OrgRow>(`update organizations set approvals_required = $2 where id = $1 returning ${ORG_COLUMNS}`, [orgId, n]);
+  const { rows } = await db.query<OrgRow>(
+    `update organizations set approvals_required = coalesce($2, approvals_required), two_person = coalesce($3, two_person)
+     where id = $1 returning ${ORG_COLUMNS}`,
+    [orgId, policy.approvalsRequired ?? null, policy.twoPerson ?? null],
+  );
   return rows[0] ? toOrg(rows[0]) : null;
 }
 
@@ -335,7 +347,7 @@ const VALID_APPROVALS = `(select count(*) from run_approvals a join members m on
 
 const RUN_COLUMNS = `id, chain_id, onchain_ref, status, failure_reason, tx_hash, recipient_count, totals, created_at, confirmed_at,
   paid_at, block_number::text as block_number, network_fee_wei::text as network_fee_wei, usd_rates,
-  created_by, requested_at, submitted_by, rejection,
+  created_by, requested_at, submitted_by, rejection, prepared_signature,
   ${VALID_APPROVALS} as approval_count`;
 
 /**
@@ -457,8 +469,12 @@ export async function markRunSubmitted(
          verified_wallets = coalesce(verified_wallets, $5::jsonb)
        where org_id = $1 and id = $2
          and (status in ('pending', 'approved', 'submitted')
-              or (status = 'draft' and (select approvals_required from organizations where id = $1) = 0 and ${NO_OTHER_OPEN_RUN}))
+              or (status = 'draft' and ${SOLO} and (select approvals_required from organizations where id = $1) = 0 and ${NO_OTHER_OPEN_RUN}))
          and ${VALID_APPROVALS} >= (select approvals_required from organizations where id = $1)
+         -- Two-person payroll: the treasury never sends a run it prepared itself, and a run someone
+         -- else prepared must carry their signature.
+         and (${SOLO} or lower(coalesce(created_by, '')) <> lower($4))
+         and (lower(coalesce(created_by, '')) = lower($4) or prepared_signature is not null)
        returning ${RUN_COLUMNS}`,
       [orgId, id, txHash, submittedBy, verifiedWallets ? JSON.stringify(verifiedWallets) : null],
     );
@@ -469,16 +485,25 @@ export async function markRunSubmitted(
   }
 }
 
-/** Sends a draft for approval (or straight to the treasury when no approvals are required). */
-export async function requestApproval(orgId: string, id: string, by: string, verifiedWallets: string[]): Promise<Run | null> {
+/**
+ * The preparer submits their reviewed, signed draft: to the extra approvers if the company has any,
+ * otherwise straight to the treasury. The signature is stored with the run and never changes.
+ */
+export async function requestApproval(
+  orgId: string,
+  id: string,
+  by: string,
+  verifiedWallets: string[],
+  signed: { message: string; signature: string } | null,
+): Promise<Run | null> {
   const db = await getDb();
   try {
     const { rows } = await db.query<RunRow>(
-      `update payroll_runs set requested_at = now(), verified_wallets = $4,
+      `update payroll_runs set requested_at = now(), verified_wallets = $4, prepared_message = $5, prepared_signature = $6,
          status = case when (select approvals_required from organizations where id = $1) = 0 then 'approved' else 'pending' end
        where org_id = $1 and id = $2 and status = 'draft' and lower(created_by) = lower($3) and ${NO_OTHER_OPEN_RUN}
        returning ${RUN_COLUMNS}`,
-      [orgId, id, by, JSON.stringify(verifiedWallets)],
+      [orgId, id, by, JSON.stringify(verifiedWallets), signed?.message ?? null, signed?.signature ?? null],
     );
     return rows[0] ? toRun(rows[0]) : null;
   } catch (err) {

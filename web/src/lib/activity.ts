@@ -54,7 +54,7 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
     case "run_sent": {
       const verified = Array.isArray(d.verifiedWallets) ? d.verifiedWallets.length : 0;
       return {
-        title: `Sent payroll to ${Number(d.recipients) || 0} people`,
+        title: `Approved and sent payroll to ${Number(d.recipients) || 0} people`,
         detail: `Transaction ${short(d.txHash)}${verified ? ` · ${verified} new or changed ${verified === 1 ? "wallet" : "wallets"} confirmed by the sender` : ""}`,
         tone: "neutral",
       };
@@ -65,12 +65,12 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
       return { title: "Payroll not recorded as paid", detail: str(d.reason), tone: "bad" };
     case "run_requested":
       return {
-        title: d.status === "approved" ? `Sent payroll for ${Number(d.recipients) || 0} people to the treasury` : `Asked for approval to pay ${Number(d.recipients) || 0} people`,
+        title: `${d.signed ? "Signed and submitted" : "Submitted"} payroll for ${Number(d.recipients) || 0} people ${d.status === "approved" ? "to the treasury" : "for sign-off"}`,
         detail: Array.isArray(d.verifiedWallets) && d.verifiedWallets.length ? `${d.verifiedWallets.length} new or changed wallets confirmed by the preparer` : undefined,
         tone: "neutral",
       };
     case "run_approved":
-      return { title: "Approved payroll with a wallet signature", detail: `${Number(d.approvals) || 0} approval${Number(d.approvals) === 1 ? "" : "s"} so far${d.status === "approved" ? " · ready to send" : ""}`, tone: "good" };
+      return { title: "Signed off payroll with a wallet signature", detail: `${Number(d.approvals) || 0} sign-off${Number(d.approvals) === 1 ? "" : "s"} so far${d.status === "approved" ? " · ready for the treasury" : ""}`, tone: "good" };
     case "run_rejected":
       return { title: "Rejected payroll", detail: str(d.reason), tone: "bad" };
     case "run_cancelled":
@@ -85,8 +85,12 @@ export function describeActivity(a: Activity): { title: string; detail?: string;
     case "member_removed":
       return { title: `Removed ${str(d.name) || short(d.address)} from the team`, detail: `Was ${str(d.role)} · ${short(d.address)}`, tone: "warn" };
     case "policy_updated": {
-      const [b, n] = ((d.changes as Record<string, FieldChange>)?.approvalsRequired ?? ["", ""]) as FieldChange;
-      return { title: "Changed the approval rule", detail: `Approvals needed ${b || "0"} → ${n || "0"}`, tone: "warn" };
+      const changes = (d.changes ?? {}) as Record<string, FieldChange>;
+      const parts = [
+        changes.twoPerson ? `Two-person payroll ${changes.twoPerson[0]} → ${changes.twoPerson[1]}` : null,
+        changes.approvalsRequired ? `Extra sign-offs ${changes.approvalsRequired[0] || "0"} → ${changes.approvalsRequired[1] || "0"}` : null,
+      ].filter(Boolean);
+      return { title: "Changed the payroll rule", detail: parts.join(" · "), tone: "warn" };
     }
     case "company_updated": {
       const changes = (d.changes ?? {}) as Record<string, FieldChange>;

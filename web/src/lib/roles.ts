@@ -27,9 +27,9 @@ export function can(role: Role | null | undefined, action: Action): boolean {
 export const ROLE_LABEL: Record<Role, string> = { owner: "Owner", admin: "Admin", preparer: "Preparer", viewer: "Viewer" };
 
 export const ROLE_HELP: Record<Role, string> = {
-  owner: "The treasury wallet. Sends approved payroll, manages the team and the approval rule.",
-  admin: "Approves or rejects payroll before it can be sent. Can edit People and settings.",
-  preparer: "Keeps People up to date and prepares payroll for approval. Can't approve or send.",
+  owner: "The treasury wallet, the higher authority. Approves payroll by sending it, and manages the team and the payroll rule.",
+  admin: "Accounts team or senior finance. Prepares and signs payroll, signs off others' payroll when extra sign-offs are on, edits People and settings.",
+  preparer: "Accounts team. Keeps People up to date, prepares payroll and signs it for the treasury. Can't sign off or send.",
   viewer: "Read-only: history, invoices and exports. Useful for an accountant.",
 };
 

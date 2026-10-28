@@ -33,12 +33,14 @@ export function runActions(me: Me, run: Run, approvals: Approval[] = []) {
   return {
     canApprove: approver && !isCreator && !approved && (run.status === "pending" || run.status === "approved") && run.approvalCount < me.org.approvalsRequired,
     // Counted, not trusted from the status: an approval stops counting if its approver leaves the team.
-    canSend: isOwner && (run.status === "approved" || run.status === "pending") && run.approvalCount >= me.org.approvalsRequired,
+    // Two-person payroll: the treasury never sends a run it prepared itself.
+    canSend:
+      isOwner && !(me.org.twoPerson && isCreator) && (run.status === "approved" || run.status === "pending") && run.approvalCount >= me.org.approvalsRequired,
     canCancel: (isCreator || isOwner) && (run.status === "pending" || run.status === "approved"),
     canRecheck: run.status === "submitted" && !!run.txHash,
     // If the wallet dropped the transaction, the treasury sends the same run again. The contract pays
     // each run once per treasury, so a resend can never pay anyone twice.
-    canResend: isOwner && run.status === "submitted" && run.approvalCount >= me.org.approvalsRequired,
+    canResend: isOwner && !(me.org.twoPerson && isCreator) && run.status === "submitted" && run.approvalCount >= me.org.approvalsRequired,
     approvedByMe: approved,
     isCreator,
     isOwner,
@@ -66,24 +68,25 @@ export function ApprovalPanel({ run, approvals, required }: { run: Run; approval
   return (
     <Card className="flex flex-col gap-3 p-5">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="flex-1 text-base font-semibold">Approvals</h2>
-        {required > 0 ? (
+        <h2 className="flex-1 text-base font-semibold">Signatures</h2>
+        {required > 0 && (
           <span className="flex items-center gap-2 text-sm text-ink-2">
-            <ApprovalDots have={approvals.length} need={required} /> {approvals.length} of {required}
+            <ApprovalDots have={approvals.length} need={required} /> {approvals.length} of {required} sign-offs
           </span>
-        ) : (
-          <span className="text-sm text-ink-2">No approvals required</span>
         )}
       </div>
       <ul className="flex flex-col gap-2 text-sm">
         <li className="flex flex-wrap items-center gap-2">
-          <Badge tone="neutral">Prepared</Badge>
+          <Badge tone={run.preparedSignature ? "good" : "neutral"}>{run.preparedSignature ? "Prepared, signed" : "Prepared"}</Badge>
           <span className="font-medium">{nameOf(run.createdBy)}</span>
           {run.requestedAt && <span className="text-ink-2">{new Date(run.requestedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+          {run.preparedSignature && (
+            <span className="font-mono text-[12px] text-ink-3" title={run.preparedSignature}>signed {run.preparedSignature.slice(0, 10)}…</span>
+          )}
         </li>
         {approvals.map((a) => (
           <li key={a.approver} className="flex flex-wrap items-center gap-2">
-            <Badge tone="good">Approved</Badge>
+            <Badge tone="good">Signed off</Badge>
             <span className="font-medium">{a.name || shortAddress(a.approver)}</span>
             {role(a.approver) && <span className="text-ink-2">{ROLE_LABEL[role(a.approver)!]}</span>}
             <span className="text-ink-2">{new Date(a.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
@@ -103,8 +106,8 @@ export function ApprovalPanel({ run, approvals, required }: { run: Run; approval
 }
 
 const TITLE: Partial<Record<Run["status"], string>> = {
-  pending: "Waiting for approval",
-  approved: "Approved, ready to send",
+  pending: "Waiting for sign-off",
+  approved: "Signed, ready for the treasury",
   submitted: "Sent, checking the transaction",
 };
 
@@ -136,14 +139,16 @@ export function OpenRunCard({
         ? "You sent this payroll. Wagefold marks it paid once the transaction checks out on-chain. If your wallet dropped it, send it again: a payroll can only be paid once, so nobody is paid twice."
         : "The treasury sent this payroll. Wagefold marks it paid once the transaction checks out on-chain."
       : left === 0
-        ? a.isOwner
-          ? "Everything is approved. Review it once more and send it from the treasury wallet."
-          : "Approved. Waiting for the treasury wallet to send it."
+        ? a.canSend
+          ? `${nameOf(run.createdBy)} prepared and signed this payroll. Review it, then approve it by sending from the treasury.`
+          : a.isCreator
+            ? "You signed and submitted this payroll. The treasury approves it by sending."
+            : "Signed and ready. Waiting for the treasury to approve it by sending."
         : a.isCreator
-          ? `You prepared this. It needs ${left} more approval${left === 1 ? "" : "s"} from an admin or the owner.`
+          ? `You signed and submitted this. It needs ${left} more sign-off${left === 1 ? "" : "s"} from an admin or the owner.`
           : a.approvedByMe
-            ? `You approved it. ${left} more approval${left === 1 ? "" : "s"} needed.`
-            : `Needs ${left} more approval${left === 1 ? "" : "s"}.`;
+            ? `You signed off. ${left} more sign-off${left === 1 ? "" : "s"} needed.`
+            : `Needs ${left} more sign-off${left === 1 ? "" : "s"} before the treasury.`;
 
   return (
     <Card className={`overflow-hidden ${a.canApprove || a.canSend ? "border-brand/50 ring-1 ring-brand/30" : ""}`}>
@@ -168,10 +173,10 @@ export function OpenRunCard({
       <p className="text-sm leading-relaxed text-ink-2">{note}</p>
       <div className="flex flex-wrap items-center gap-3">
         {a.canApprove && (
-          <Button size="lg" onClick={() => onOpen("approve")} disabled={busy}>Review and approve</Button>
+          <Button size="lg" onClick={() => onOpen("approve")} disabled={busy}>Review and sign off</Button>
         )}
         {a.canSend && (
-          <Button size="lg" onClick={() => onOpen("send")} disabled={busy}>Review and send</Button>
+          <Button size="lg" onClick={() => onOpen("send")} disabled={busy}>Review, approve and send</Button>
         )}
         {a.canRecheck && (
           <Button size="lg" onClick={onRecheck} disabled={busy}>{busy ? <Spinner /> : null}Check the transaction</Button>

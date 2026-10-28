@@ -103,8 +103,10 @@ export function PayTab({
           }}
           onRequest={(v) =>
             act(
-              () => request(phase.run, v),
-              me.org.approvalsRequired > 0 ? "Sent for approval. Approvers will see it on their Pay page." : "Sent to the treasury wallet for signing.",
+              () => request(phase.run, v, me.address.toLowerCase() !== me.org.ownerAddress.toLowerCase()),
+              me.org.approvalsRequired > 0
+                ? "Signed and submitted. Sign-offs come next, then the treasury."
+                : "Signed and submitted. The treasury approves it by sending.",
             )
           }
           onApprove={() => act(() => approve(phase.run), "Approved with your wallet signature")}
@@ -168,7 +170,14 @@ function PayHome({
   const openRun = runs.data?.find((r) => r.status === "pending" || r.status === "approved" || r.status === "submitted");
   const latest = runs.data?.[0];
   const rejected = latest?.status === "rejected" ? latest : undefined;
-  const canPrepare = can(session.role, "prepare");
+  const isTreasury = session.address.toLowerCase() === session.org.ownerAddress.toLowerCase();
+  // Two-person payroll: the accounts team prepares and signs; the treasury only approves by sending.
+  const canPrepare = can(session.role, "prepare") && !(isTreasury && session.org.twoPerson);
+  const signers = [
+    session.org.twoPerson || !isTreasury ? "accounts team" : null,
+    session.org.approvalsRequired > 0 ? `${session.org.approvalsRequired} sign-off${session.org.approvalsRequired === 1 ? "" : "s"}` : null,
+    "the treasury",
+  ].filter(Boolean).join(", then ");
   const needsApproval = session.org.approvalsRequired > 0 || session.address.toLowerCase() !== session.org.ownerAddress.toLowerCase();
   const list = employees.data ?? [];
   const last = runs.data?.find((r) => r.status === "confirmed");
@@ -243,11 +252,7 @@ function PayHome({
               </ChequeLine>
               <div className="flex items-end justify-between gap-4">
                 <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Signed by</span>
-                <span className="border-t border-line-strong pt-1.5 text-right text-sm font-medium">
-                  {session.org.approvalsRequired === 0
-                    ? "The treasury"
-                    : `${session.org.approvalsRequired} approver${session.org.approvalsRequired === 1 ? "" : "s"}, then the treasury`}
-                </span>
+                <span className="border-t border-line-strong pt-1.5 text-right text-sm font-medium first-letter:uppercase">{signers}</span>
               </div>
               {short.length > 0 && (
                 <p role="alert" className="rounded-lg border border-warn-line bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -262,6 +267,13 @@ function PayHome({
                   {preparing ? <Spinner /> : null}
                   {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
                 </Button>
+              ) : isTreasury && session.org.twoPerson ? (
+                <span className="max-w-[46ch] text-sm leading-relaxed text-ink-2">
+                  Your accounts team prepares and signs this payroll. It appears here for you to approve by sending.{" "}
+                  <button type="button" onClick={onOpenSettings} className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+                    Team settings
+                  </button>
+                </span>
               ) : (
                 <span className="rounded-lg bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
               )}
@@ -416,8 +428,8 @@ function Review({
   const [reason, setReason] = useState("");
   const preparing = mode === "prepare";
   const isOwner = me.address.toLowerCase() === me.org.ownerAddress.toLowerCase();
-  // The owner sends directly only when no approvals are required; everyone else asks first.
-  const directSend = preparing && isOwner && me.org.approvalsRequired === 0;
+  // The owner sends directly only when running payroll alone with no sign-offs; everyone else submits first.
+  const directSend = preparing && isOwner && !me.org.twoPerson && me.org.approvalsRequired === 0;
   const approvals = detail?.approvals ?? [];
   const actions = runActions(me, run, approvals);
   const preparerConfirmed = new Set((detail?.verifiedWallets ?? []).map((w) => w.toLowerCase()));
@@ -658,12 +670,12 @@ function Review({
       <div className="flex flex-col gap-2.5">
         {directSend || mode === "send" ? (
           <Button size="lg" className="min-h-[60px] text-lg" onClick={() => onSend(verified)} disabled={!canSend}>
-            Send to {items.length} {items.length === 1 ? "person" : "people"}
+            {mode === "send" ? "Approve and send" : "Send"} to {items.length} {items.length === 1 ? "person" : "people"}
           </Button>
         ) : preparing ? (
           <Button size="lg" className="min-h-[60px] text-lg" onClick={() => step(() => onRequest(verified))} disabled={!walletsOk || busy}>
             {busy ? <Spinner /> : null}
-            {me.org.approvalsRequired > 0 ? "Submit for approval" : "Send to the treasury for signing"}
+            {isOwner ? "Submit for sign-off" : me.org.approvalsRequired > 0 ? "Sign and submit for sign-off" : "Sign and submit to the treasury"}
           </Button>
         ) : mode === "approve" ? (
           rejecting ? (
@@ -701,15 +713,19 @@ function Review({
             ? review.firstRun
               ? "Confirm the wallet check above to continue."
               : `Confirm ${pending} more ${pending === 1 ? "wallet" : "wallets"} above to continue.`
-            : directSend || mode === "send"
-              ? "Everyone is paid in one transaction from your wallet. Payments can't be reversed."
-              : preparing
-                ? me.org.approvalsRequired > 0
-                  ? `${me.org.approvalsRequired} approver${me.org.approvalsRequired === 1 ? "" : "s"} must sign off before the treasury wallet can send it.`
-                  : "The treasury wallet reviews and sends it."
-                : mode === "approve"
-                  ? "Once approvals are complete, only the treasury wallet can send it."
-                  : ""}
+            : mode === "send"
+              ? `Prepared and signed by ${nameOf(run.createdBy)}. Sending is your approval: everyone is paid in one transaction from the treasury, and payments can't be reversed.`
+              : directSend
+                ? "Everyone is paid in one transaction from your wallet. Payments can't be reversed."
+                : preparing
+                  ? `${isOwner ? "" : "Your wallet signs this exact list. "}${
+                      me.org.approvalsRequired > 0
+                        ? `${me.org.approvalsRequired} admin${me.org.approvalsRequired === 1 ? "" : "s"} sign off next, then the treasury approves it by sending.`
+                        : "The treasury then approves it by sending."
+                    }`
+                  : mode === "approve"
+                    ? "After the sign-offs, the treasury approves it by sending."
+                    : ""}
         </p>
       </div>
     </div>
@@ -816,7 +832,7 @@ function Progress({ phase }: { phase: Extract<Phase, { kind: "approving" | "conf
     phase.kind === "approving"
       ? `Step ${phase.step} of ${phase.steps}. This lets the payroll contract send exactly this run's ${phase.symbol} from your wallet, nothing more.`
       : phase.kind === "confirm"
-        ? `${phase.batched ? "One confirmation approves the tokens and pays everyone" : "One signature pays everyone"}: ${totalsLabel(sumByToken(phase.items))}.`
+        ? `${phase.batched ? "One confirmation approves the tokens and pays everyone" : "Your treasury signature pays everyone"}: ${totalsLabel(sumByToken(phase.items))}.`
         : phase.kind === "sending"
           ? "This usually takes a few seconds."
           : "Making sure every person got exactly what People says.";

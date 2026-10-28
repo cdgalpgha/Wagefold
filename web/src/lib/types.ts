@@ -14,8 +14,13 @@ export type Org = {
   taxId: string | null;
   invoicePrefix: string;
   invoiceNote: string | null;
-  /** How many approvals a payroll needs before the treasury can send it. 0 = no approval step. */
+  /** Extra admin sign-offs a payroll needs before the treasury can send it. 0 = none. */
   approvalsRequired: number;
+  /**
+   * Two-person payroll: the accounts team prepares and signs each run, and the treasury approves it
+   * by sending. Whoever prepares can never send. On by default; the owner can turn it off.
+   */
+  twoPerson: boolean;
 };
 export type Membership = { orgId: string; name: string; role: Role };
 export type Me = { address: string; chainId: number; org: Org; role: Role; memberships: Membership[] };
@@ -55,6 +60,8 @@ export type Run = {
   submittedBy: string | null;
   approvalCount: number;
   rejection: { by: string; reason: string; at: string } | null;
+  /** The preparer's wallet signature over this exact run, made when they submitted it. */
+  preparedSignature: string | null;
 };
 export type Approval = { approver: string; name: string; at: string; signature: string };
 export type RunWithItems = { run: Run; items: RunItem[] };

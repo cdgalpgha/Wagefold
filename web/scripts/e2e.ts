@@ -96,6 +96,13 @@ async function signIn(call: ReturnType<typeof client>, key: Hex) {
   return account;
 }
 
+/** The accounts team submits a draft: fetch the exact message for this run, sign it, send it back. */
+async function submitSigned(call: ReturnType<typeof client>, key: Hex, runId: string, body: Record<string, unknown> = {}) {
+  const { body: m } = await call<{ message: string }>(`/api/runs/${runId}/request`);
+  const signature = await privateKeyToAccount(key).signMessage({ message: m.message });
+  return call(`/api/runs/${runId}/request`, { body: { ...body, signature } });
+}
+
 async function pay(key: Hex, runRef: Hex, items: RunItem[]): Promise<Hex> {
   const account = privateKeyToAccount(key);
   const wallet = createWalletClient({ account, chain: hardhat, transport: http() });
@@ -217,6 +224,20 @@ async function main() {
     assert.equal(me.body.address, privateKeyToAccount(KEYS.treasury).address);
   });
   void treasury;
+
+  await step("a new company starts with two-person payroll on; a solo owner can switch it off", async () => {
+    const me = await api("/api/me");
+    assert.equal(me.body.org.twoPerson, true);
+    await api("/api/employees", { body: { name: "Probe", wallet: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955", amount: "1", token: "USDC" } });
+    const blocked = await api("/api/runs", { body: { chainId: 31337 } });
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.body.error, /accounts team prepares/);
+    const off = await api("/api/team/policy", { method: "PATCH", body: { twoPerson: false } });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.org.twoPerson, false);
+    const probe = (await api("/api/employees")).body.employees.find((e: { name: string }) => e.name === "Probe");
+    await api(`/api/employees/${probe.id}`, { method: "DELETE" });
+  });
 
   await step("validates employees: bad checksum, zero amount, unknown token", async () => {
     const typo = await api("/api/employees", { body: { name: "Typo", wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79c8", amount: "1", token: "USDC" } });
@@ -467,9 +488,10 @@ async function main() {
     assert.equal((await api("/api/team", { body: { address: addr("admin"), name: "Again", role: "admin" } })).status, 409);
     assert.equal((await api("/api/team", { body: { address: addr("otherCompany"), name: "X", role: "owner" } })).status, 400);
     assert.equal((await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 3 } })).status, 400); // only 2 can approve
-    const policy = await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 1 } });
+    const policy = await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 1, twoPerson: true } });
     assert.equal(policy.status, 200, JSON.stringify(policy.body));
     assert.equal(policy.body.org.approvalsRequired, 1);
+    assert.equal(policy.body.org.twoPerson, true);
     const team = await api("/api/team");
     assert.deepEqual(team.body.members.map((m: { role: string }) => m.role), ["owner", "admin", "preparer", "viewer"]);
   });
@@ -486,20 +508,28 @@ async function main() {
     const created = await prep("/api/runs", { body: { chainId: 31337 } });
     assert.equal(created.status, 201, JSON.stringify(created.body));
     ({ run: run2, items: items2 } = created.body);
-    const requested = await prep(`/api/runs/${run2.id}/request`, { body: { verifiedWallets: [RECIPIENTS[0], "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc"] } });
+    // The accounts team must sign what it submits: no signature, someone else's, or a tampered message are refused.
+    assert.equal((await prep(`/api/runs/${run2.id}/request`, { body: {} })).status, 400);
+    const { body: pm } = await prep(`/api/runs/${run2.id}/request`);
+    assert.match(pm.message, /Prepared by: /);
+    const wrongKey = await privateKeyToAccount(KEYS.viewer).signMessage({ message: pm.message });
+    assert.equal((await prep(`/api/runs/${run2.id}/request`, { body: { signature: wrongKey } })).status, 401);
+    const tampered = await privateKeyToAccount(KEYS.preparer).signMessage({ message: pm.message.replace("Pay 3 people", "Pay 2 people") });
+    assert.equal((await prep(`/api/runs/${run2.id}/request`, { body: { signature: tampered } })).status, 401);
+    const requested = await submitSigned(prep, KEYS.preparer, run2.id, { verifiedWallets: [RECIPIENTS[0], "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc"] });
     assert.equal(requested.status, 200, JSON.stringify(requested.body));
     assert.equal(requested.body.run.status, "pending");
+    assert.match(requested.body.run.preparedSignature, /^0x/);
     assert.equal((await prep(`/api/runs/${run2.id}/approve`)).status, 403);
     assert.equal((await prep(`/api/runs/${run2.id}/submit`, { body: { txHash: `0x${"ab".repeat(32)}` } })).status, 403);
-    const blocked = await api("/api/runs", { body: { chainId: 31337 } });
-    assert.equal(blocked.status, 409);
-    assert.equal(blocked.body.openRunId, run2.id);
+    // Two-person payroll: the treasury can't prepare a run itself.
+    assert.equal((await api("/api/runs", { body: { chainId: 31337 } })).status, 403);
   });
 
   await step("the treasury can't send a payroll that hasn't been approved", async () => {
     const res = await api(`/api/runs/${run2.id}/submit`, { body: { txHash: `0x${"cd".repeat(32)}` } });
     assert.equal(res.status, 409);
-    assert.match(res.body.error, /needs 1 approval/);
+    assert.match(res.body.error, /needs 1 sign-off/);
   });
 
   await step("approvals are wallet signatures the server checks against the exact run", async () => {
@@ -553,7 +583,7 @@ async function main() {
 
   await step("a payment the browser never reported is found on-chain and verified", async () => {
     const r = (await prep("/api/runs", { body: { chainId: 31337 } })).body;
-    await prep(`/api/runs/${r.run.id}/request`, { body: {} });
+    await submitSigned(prep, KEYS.preparer, r.run.id);
     const { body: m } = await admin(`/api/runs/${r.run.id}/approve`);
     await admin(`/api/runs/${r.run.id}/approve`, { body: { signature: await privateKeyToAccount(KEYS.admin).signMessage({ message: m.message }) } });
     const tx = await pay(KEYS.treasury, r.run.onchainRef, r.items); // paid, but /submit never called
@@ -563,19 +593,19 @@ async function main() {
   });
 
   await step("only one payroll can wait for approval at a time, even from two drafts", async () => {
-    const mine = (await api("/api/runs", { body: { chainId: 31337 } })).body.run;
+    const mine = (await admin("/api/runs", { body: { chainId: 31337 } })).body.run;
     const theirs = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
-    assert.equal((await prep(`/api/runs/${theirs.id}/request`, { body: {} })).status, 200);
-    const second = await api(`/api/runs/${mine.id}/request`, { body: {} });
+    assert.equal((await submitSigned(prep, KEYS.preparer, theirs.id)).status, 200);
+    const second = await submitSigned(admin, KEYS.admin, mine.id);
     assert.equal(second.status, 409);
     assert.match(second.body.error, /Another payroll/);
     assert.equal((await prep(`/api/runs/${theirs.id}/cancel`, { body: {} })).body.run.status, "cancelled");
-    assert.equal((await api(`/api/runs/${mine.id}/cancel`, { body: {} })).body.run.status, "cancelled");
+    assert.equal((await admin(`/api/runs/${mine.id}/cancel`, { body: {} })).body.run.status, "cancelled");
   });
 
   await step("an approval can't be replayed on another run, and nobody approves their own payroll", async () => {
     const r3 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
-    await prep(`/api/runs/${r3.id}/request`, { body: { verifiedWallets: [] } });
+    await submitSigned(prep, KEYS.preparer, r3.id, { verifiedWallets: [] });
     assert.equal((await admin(`/api/runs/${r3.id}/approve`, { body: { signature: approval2.signature } })).status, 401);
     const rejected = await admin(`/api/runs/${r3.id}/reject`, { body: { reason: "Wrong month" } });
     assert.equal(rejected.body.run.status, "rejected");
@@ -583,7 +613,7 @@ async function main() {
     // Promote the preparer to admin: they still can't approve the run they prepared.
     await api(`/api/team/${addr("preparer")}`, { method: "PATCH", body: { role: "admin" } });
     const r4 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
-    await prep(`/api/runs/${r4.id}/request`, { body: {} });
+    await submitSigned(prep, KEYS.preparer, r4.id);
     const own = await prep(`/api/runs/${r4.id}/approve`);
     assert.equal(own.status, 403);
     assert.match(own.body.error, /someone else/);
@@ -601,7 +631,7 @@ async function main() {
     });
     assert.equal(moved.status, 200, JSON.stringify(moved.body));
     const r = (await admin("/api/runs", { body: { chainId: 31337 } })).body.run;
-    await admin(`/api/runs/${r.id}/request`, { body: {} });
+    await submitSigned(admin, KEYS.admin, r.id);
     const blocked = await prep(`/api/runs/${r.id}/approve`);
     assert.equal(blocked.status, 403);
     assert.match(blocked.body.error, /changed the wallet/);
@@ -614,7 +644,7 @@ async function main() {
 
   await step("removing a teammate ends their access, and their approvals stop counting", async () => {
     const r5 = (await prep("/api/runs", { body: { chainId: 31337 } })).body.run;
-    await prep(`/api/runs/${r5.id}/request`, { body: {} });
+    await submitSigned(prep, KEYS.preparer, r5.id);
     const { body: m5 } = await admin(`/api/runs/${r5.id}/approve`);
     const sig5 = await privateKeyToAccount(KEYS.admin).signMessage({ message: m5.message });
     assert.equal((await admin(`/api/runs/${r5.id}/approve`, { body: { signature: sig5 } })).body.run.approvalCount, 1);
@@ -630,6 +660,21 @@ async function main() {
     for (const a of ["member_added", "policy_updated", "run_requested", "run_approved", "run_rejected", "run_cancelled", "member_updated", "member_removed"]) {
       assert.ok(actions.includes(a), `missing ${a}`);
     }
+  });
+
+  await step("two-person payroll: the accounts team signs, the treasury approves by sending", async () => {
+    assert.equal((await api("/api/team/policy", { method: "PATCH", body: { approvalsRequired: 0 } })).status, 200);
+    const r = (await prep("/api/runs", { body: { chainId: 31337 } })).body;
+    const submitted = await submitSigned(prep, KEYS.preparer, r.run.id);
+    assert.equal(submitted.body.run.status, "approved"); // straight to the treasury: no extra sign-offs
+    const tx = await pay(KEYS.treasury, r.run.onchainRef, r.items);
+    const sent = await api(`/api/runs/${r.run.id}/submit`, { body: { txHash: tx } });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    assert.equal((await api(`/api/runs/${r.run.id}/confirm`, { body: {} })).body.run.status, "confirmed");
+    const detail = await viewer(`/api/runs/${r.run.id}`);
+    assert.equal(detail.body.run.createdBy, addr("preparer"));
+    assert.equal(detail.body.run.submittedBy, addr("treasury"));
+    assert.match(detail.body.run.preparedSignature, /^0x/);
   });
 
   await step("another company's wallet can't see this team", async () => {

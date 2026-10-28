@@ -1,5 +1,5 @@
 import "server-only";
-import { approvalMessage } from "../approvals";
+import { approvalMessage, preparedMessage } from "../approvals";
 import { reviewRun } from "../changes";
 import { getChainConfig } from "../chains";
 import type { RunDetail } from "../types";
@@ -22,13 +22,18 @@ export async function runDetail(orgId: string, runId: string): Promise<RunDetail
   };
 }
 
+/** The exact text the preparer signs to submit this run, rebuilt from the server's own snapshot. */
+export const expectedPreparedMessage = (orgId: string, runId: string, preparer: string) => expected(orgId, runId, preparer, preparedMessage);
+
 /** The exact text an approver signs for this run, rebuilt from the server's own snapshot. */
-export async function expectedApprovalMessage(orgId: string, runId: string, approver: string): Promise<string | null> {
+export const expectedApprovalMessage = (orgId: string, runId: string, approver: string) => expected(orgId, runId, approver, approvalMessage);
+
+async function expected(orgId: string, runId: string, approver: string, build: typeof approvalMessage): Promise<string | null> {
   const found = await getRun(orgId, runId).catch(() => null);
   const org = await getOrganization(orgId);
   const cfg = found && getChainConfig(found.run.chainId);
   if (!found || !org || !cfg) return null;
-  return approvalMessage({
+  return build({
     runId,
     onchainRef: found.run.onchainRef,
     items: found.items,

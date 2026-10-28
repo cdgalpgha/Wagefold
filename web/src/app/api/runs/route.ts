@@ -6,7 +6,7 @@ import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS } from "@/lib/chains";
 import { sumByToken } from "@/lib/money";
 import { fail, json, readJson, requireMember } from "@/lib/server/http";
 import { reviewRun } from "@/lib/changes";
-import { createRunFromEmployees, lastPaidRunItems, listEmployees, listRuns, openRun, paidWallets } from "@/lib/server/repo";
+import { createRunFromEmployees, getOrganization, lastPaidRunItems, listEmployees, listRuns, openRun, paidWallets } from "@/lib/server/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +22,11 @@ const createInput = z.object({ chainId: z.number().int() });
 export async function POST(req: Request) {
   const session = await requireMember("prepare");
   if (session instanceof NextResponse) return session;
+  // Two-person payroll: the accounts team prepares, the treasury approves by sending. Never both.
+  const org = await getOrganization(session.orgId);
+  if (org?.twoPerson && org.ownerAddress.toLowerCase() === session.address.toLowerCase()) {
+    return fail("Two-person payroll is on: your accounts team prepares and signs payroll, and you approve it by sending.", 403);
+  }
   // One payroll in flight at a time, so nobody approves or sends a run that another one replaced.
   const open = await openRun(session.orgId);
   if (open) return json({ error: "A payroll is already waiting for approval or being sent. Finish or cancel it first.", openRunId: open.id }, 409);

@@ -17,40 +17,45 @@ const WALLETS: { key: BrandLogo; note: string }[] = [
 
 const STEPS = [
   {
-    title: "Connect your treasury wallet",
-    body: "MetaMask, Coinbase Wallet, Trust Wallet or a Safe multisig. You sign in with a signature: no gas, and no money moves.",
-    icon: <path d="M3 7a2 2 0 0 1 2-2h13v4M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9H5a2 2 0 0 1-2-2zM16 14h2" />,
-  },
-  {
-    title: "Add your team once",
-    body: "Name, role, wallet address and monthly pay. Type them in or import a CSV. Typos in wallet addresses are caught before they cost you.",
+    title: "Set up your team",
+    body: "Connect the treasury wallet, add everyone you pay (or import a CSV), and add your accounts team by their wallet address.",
     icon: <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M17 3.5a4 4 0 0 1 0 7.5M19 14a6 6 0 0 1 3 7" />,
   },
   {
-    title: "Review and sign once",
-    body: "On payday Wagefold shows only what changed since last time, then pays everyone in one transaction and checks the result on-chain.",
+    title: "Accounts prepares and signs",
+    body: "On payday your accounts team pulls everyone into a payroll, checks what changed since last time, and signs that exact list with their wallet.",
+    icon: <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4M13 20h7" />,
+  },
+  {
+    title: "Treasury approves by sending",
+    body: "The treasury reviews the signed payroll on its dashboard and sends it. One transaction pays everyone, and Wagefold checks the result on-chain.",
     icon: <path d="m5 12 4 4 10-10M4 20h16" />,
   },
 ];
 
 const SAFEGUARDS = [
-  { title: "Wallet changes need your OK", body: "A changed or never-paid address is flagged, and you confirm it before any money moves." },
-  { title: "All or nothing", body: "If one payment would fail, none go out. Payroll is never half paid." },
+  { title: "Two people, every time", body: "Whoever prepares a payroll can never send it. Nobody can pay the team alone." },
+  { title: "Wallet changes are flagged", body: "A changed or never-paid address is flagged and confirmed with its owner before the accounts team signs." },
   { title: "Checked on-chain", body: "A run is marked paid only when the chain shows every person got exactly the right amount." },
-  { title: "You keep custody", body: "Wagefold can't move your funds. Only your wallet can sign a payment." },
-  { title: "Exact approvals", body: "The payroll contract is allowed this run's total and nothing more." },
-  { title: "A record you can share", body: "Every payment links to its transaction, so “did I get paid?” takes seconds to answer." },
+  { title: "All or nothing", body: "If one payment would fail, none go out. Payroll is never half paid." },
+  { title: "You keep custody", body: "Wagefold can't move your funds. Only the treasury wallet can send a payment." },
+  { title: "A record you can share", body: "Every payment links to its transaction, with who prepared it and who sent it." },
 ];
 
 const PIPELINE = [
   { title: "People", body: "Name, wallet and pay for everyone" },
   { title: "Snapshot", body: "Frozen for this run, edits can't sneak in" },
-  { title: "Checks", body: "Balance, addresses and what changed" },
-  { title: "One signature", body: "Your wallet approves the whole run" },
+  { title: "Accounts signs", body: "The accounts team signs this exact list" },
+  { title: "Treasury sends", body: "Sending from the treasury is the approval" },
   { title: "Verified", body: "Every transfer matched on Base" },
 ];
 
 const FAQ = [
+  {
+    q: "Who signs a payroll?",
+    a: "Two people. Someone on your accounts team prepares the payroll and signs it with their wallet. The treasury reviews it on its dashboard and approves it by sending from the treasury wallet. Whoever prepares can never send. A solo owner can switch this off in Settings.",
+  },
+  { q: "Can we add more sign-offs?", a: "Yes. You can require up to five admins to sign off between the accounts team and the treasury." },
   { q: "Which network and tokens?", a: "Base, with USDC and USDT. Network fees for a whole payroll run are a few cents." },
   { q: "Do employees need an account?", a: "No. They only need a wallet address that can receive USDC or USDT on Base." },
   { q: "Can people be paid to a bank account?", a: "Not today. Wagefold pays crypto wallets directly." },
@@ -102,12 +107,14 @@ export function Landing() {
           <div className={`relative mx-auto grid max-w-6xl items-center gap-14 py-16 lg:grid-cols-[1fr_1.05fr] lg:py-24 ${gutter}`}>
             <div className="wf-rise">
               <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Stablecoin payroll on Base</p>
-              <h1 className="mt-5 text-balance text-[42px] font-semibold leading-[1.02] sm:text-[58px]">
-                Pay your whole team with <span className="text-brand">one signature.</span>
+              <h1 className="mt-5 text-[38px] font-semibold leading-[1.04] sm:text-[52px]">
+                <span className="block">Two signatures.</span>
+                <span className="block">One transaction.</span>
+                <span className="block text-brand">Everyone paid.</span>
               </h1>
               <p className="mt-5 max-w-[54ch] text-lg leading-relaxed text-ink-2">
-                Keep your team in one list. On payday, Wagefold pulls every name, wallet and amount, and pays everyone in USDC or USDT from
-                your treasury wallet with a single signature.
+                Your accounts team prepares payroll from your people list and signs it. The treasury reviews it on the dashboard and approves
+                it by sending: one transaction pays everyone in USDC or USDT, and Wagefold checks it on-chain.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <button type="button" onClick={connect} className="inline-flex min-h-14 items-center gap-2 rounded-lg bg-brand-solid px-7 text-[16px] font-semibold text-white shadow-button transition-colors hover:bg-brand-hover">
@@ -134,8 +141,8 @@ export function Landing() {
         {/* At a glance ----------------------------------------------------------------------------- */}
         <section aria-label="At a glance" className="border-y border-line bg-surface">
           <dl className={`mx-auto grid max-w-6xl grid-cols-2 gap-y-6 py-8 md:grid-cols-4 ${gutter}`}>
-            <Stat value="1 signature" label="pays the whole team" />
-            <Stat value="500 people" label="per transaction" />
+            <Stat value="2 signatures" label="accounts, then treasury" />
+            <Stat value="1 transaction" label="pays up to 500 people" />
             <div className="flex flex-col gap-1 px-2">
               <dt className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
                 <BrandImg logo="usdc" className="h-7 w-7" /> <BrandImg logo="usdt" className="h-7 w-7" /> <span className="sr-only">USDC and USDT</span>
@@ -175,7 +182,7 @@ export function Landing() {
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Wallets</p>
               <h2 className="mt-2 text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Use the wallet you already have</h2>
-              <p className="mt-3 max-w-[52ch] text-lg text-ink-2">Connect a single-signer wallet or a Safe, where your approvers become its signers.</p>
+              <p className="mt-3 max-w-[52ch] text-lg text-ink-2">The treasury and your accounts team each sign in with their own wallet. The treasury can be a regular wallet or a Safe.</p>
               <ul className="mt-8 grid gap-3 sm:grid-cols-2">
                 {WALLETS.map((w) => (
                   <li key={w.key} className="flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
@@ -231,7 +238,7 @@ export function Landing() {
           <div className={`mx-auto max-w-6xl py-20 ${gutter}`}>
             <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Safety</p>
             <h2 className="mt-2 max-w-2xl text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Built for the moments payroll goes wrong</h2>
-            <p className="mt-3 max-w-[60ch] text-lg text-ink-2">Crypto payments can&apos;t be reversed, so the safeguards sit before the signature, not after.</p>
+            <p className="mt-3 max-w-[60ch] text-lg text-ink-2">Crypto payments can&apos;t be reversed, so the safeguards sit before the treasury sends, not after.</p>
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {SAFEGUARDS.map((f) => (
                 <div key={f.title} className="flex gap-3 rounded-xl border border-line p-5 transition hover:border-brand/30 hover:bg-brand-soft/30">
@@ -271,8 +278,8 @@ export function Landing() {
           <Guilloche className="pointer-events-none absolute inset-0 h-full w-full text-white opacity-25" />
           <div className={`relative mx-auto flex max-w-6xl flex-col items-start gap-6 py-16 md:flex-row md:items-center md:justify-between ${gutter}`}>
             <div>
-              <h2 className="max-w-xl text-balance font-display text-3xl font-semibold tracking-[-0.01em]">Run your next payroll with one signature.</h2>
-              <p className="mt-2 text-white/80">Connect a wallet to start. It takes about five minutes to add your team.</p>
+              <h2 className="max-w-xl text-balance font-display text-3xl font-semibold tracking-[-0.01em]">Your accounts team signs. Your treasury sends. Everyone is paid.</h2>
+              <p className="mt-2 text-white/80">Connect the treasury wallet to start, then add your people and your accounts team.</p>
             </div>
             <button type="button" onClick={connect} className="min-h-14 rounded-lg bg-white px-7 text-[16px] font-semibold text-brand-deep transition-colors hover:bg-white/90">
               Connect wallet
@@ -358,9 +365,25 @@ function Coin({ logo, size, spin = true, style }: { logo: BrandLogo; size: numbe
 }
 
 /**
- * The product in one picture: this month's payroll as a single cheque, signed once by the treasury,
- * with the pay stub listing everyone it pays. The signature draws itself once on load.
+ * The product in one picture: this month's payroll as a single cheque with two signatures, the
+ * accounts team's and then the treasury's, and the pay stub listing everyone it pays. The two
+ * signatures write themselves in that order, once, on load.
  */
+const SIGN_A = "M4 30c8-14 14-22 18-20s-6 22-2 22 12-26 18-24-4 20 2 20 8-14 14-14 2 12 8 12 10-18 16-18-2 16 4 16 14-8 22-10";
+const SIGN_B = "M6 26c6-10 10-18 14-16s-4 18 2 18 10-24 16-20-2 14 4 14 6-10 12-10 4 10 10 8 8-14 14-12 6 10 14 6 12-6 18-4";
+
+function SignatureLine({ label, who, d, delay }: { label: string; who: string; d: string; delay: string }) {
+  return (
+    <div className="flex flex-col">
+      <svg className="h-9 w-full max-w-[150px] text-brand" viewBox="0 0 150 40" fill="none" aria-hidden="true">
+        <path className="wf-sign" style={{ animationDelay: delay }} pathLength={1} d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="border-t border-line-strong pt-1 text-[10.5px] font-medium uppercase tracking-[0.12em] text-ink-3">{label}</span>
+      <span className="truncate text-[12px] text-ink-2">{who}</span>
+    </div>
+  );
+}
+
 function HeroCheque() {
   return (
     <figure className="wf-rise relative mx-auto w-full max-w-[540px]">
@@ -380,22 +403,9 @@ function HeroCheque() {
               <li className="tabular font-display text-[18px] font-semibold sm:text-[21px]">12,500.00 <span className="text-ink-2">USDT</span></li>
             </ul>
           </ChequeLine>
-          <div className="flex items-end justify-between gap-4">
-            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Signed once</span>
-            <span className="flex flex-col items-end">
-              <svg className="h-10 w-40 text-brand" viewBox="0 0 160 40" fill="none" aria-hidden="true">
-                <path
-                  className="wf-sign"
-                  pathLength={1}
-                  d="M4 30c8-14 14-22 18-20s-6 22-2 22 12-26 18-24-4 20 2 20 8-14 14-14 2 12 8 12 10-18 16-18-2 16 4 16 14-8 22-10 18 0 28-2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span className="border-t border-line-strong pt-1 font-mono text-[11.5px] text-ink-2">0xf39F…2266 · treasury</span>
-            </span>
+          <div className="grid grid-cols-2 gap-5">
+            <SignatureLine label="Prepared and signed" who="Dana Okafor · accounts" d={SIGN_A} delay="0.5s" />
+            <SignatureLine label="Approved and sent" who="0xf39F…2266 · treasury" d={SIGN_B} delay="2.2s" />
           </div>
         </div>
         <Perforation />
@@ -411,7 +421,7 @@ function HeroCheque() {
           ))}
         </ul>
         <figcaption className="border-t border-line-soft bg-surface-2 px-6 py-3 text-xs text-ink-3 sm:px-8">
-          Example team. One transaction on Base pays all five; each payment is checked on-chain after it lands.
+          Example team. Two signatures, then one transaction on Base pays all five; each payment is checked on-chain after it lands.
         </figcaption>
       </div>
     </figure>
@@ -480,10 +490,10 @@ function SignatureDots() {
   return (
     <div className="rounded-xl bg-white/[0.04] p-6 ring-1 ring-white/10">
       <p className="text-sm text-white/70">Signatures needed</p>
-      <p className="mt-1 text-4xl font-semibold tracking-tight">100 → 1</p>
+      <p className="mt-1 font-display text-4xl font-semibold">100 → 2</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_auto] sm:items-end">
         <div>
-          <div className="grid grid-cols-[repeat(20,minmax(0,1fr))] gap-1" role="img" aria-label="100 dots, one per signature for separate transfers">
+          <div className="grid grid-cols-[repeat(20,minmax(0,1fr))] gap-1" role="img" aria-label="100 dots, one signature per separate transfer">
             {Array.from({ length: 100 }, (_, i) => (
               <span key={i} className="aspect-square rounded-full bg-white/30" />
             ))}
@@ -491,10 +501,14 @@ function SignatureDots() {
           <p className="mt-2 text-[13px] text-white/70">Separate transfers: one per person</p>
         </div>
         <div className="flex flex-col items-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-logo-b shadow-[0_0_0_10px_rgb(var(--c-logo-b)/0.15)]" role="img" aria-label="One signature for a Wagefold run">
-            <svg className="h-7 w-7 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+          <span className="flex gap-2" role="img" aria-label="Two signatures for a Wagefold run: accounts team, then treasury">
+            {[0, 1].map((i) => (
+              <span key={i} className="flex h-14 w-14 items-center justify-center rounded-full bg-logo-b shadow-[0_0_0_8px_rgb(var(--c-logo-b)/0.15)]">
+                <svg className="h-6 w-6 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+              </span>
+            ))}
           </span>
-          <p className="mt-2 text-[13px] text-white/70">Wagefold: one per run</p>
+          <p className="mt-3 text-[13px] text-white/70">Wagefold: accounts, then treasury</p>
         </div>
       </div>
     </div>

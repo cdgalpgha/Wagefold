@@ -8,7 +8,7 @@ import { formatEther, formatUnits, getAddress, hexToBigInt, isAddress, isHex, pa
 import { parseSiweMessage } from "viem/siwe";
 import { MAX_PAYMENTS, payrollAbi } from "@/lib/abi";
 import { personChanges } from "@/lib/activity";
-import { approvalMessage } from "@/lib/approvals";
+import { approvalMessage, preparedMessage } from "@/lib/approvals";
 import { reviewRun } from "@/lib/changes";
 import { getChainConfig, TOKEN_DECIMALS, TOKEN_SYMBOLS, type TokenSymbol } from "@/lib/chains";
 import { buildInvoice, DEFAULT_PREFIX, type Invoice } from "@/lib/invoices";
@@ -51,7 +51,7 @@ const uuid = () =>
     ? crypto.randomUUID()
     : "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
 
-/** The example company: the treasury owns it, Dana (CFO) approves, and payroll needs one approval. */
+/** The example company: the treasury owns it and approves by sending; Dana on the accounts team prepares and signs. */
 function fresh(): DemoState {
   const orgId = uuid();
   const now = new Date().toISOString();
@@ -70,12 +70,13 @@ function fresh(): DemoState {
           taxId: "GB 123 4567 89",
           invoicePrefix: "NW-",
           invoiceNote: null,
-          approvalsRequired: 1,
+          approvalsRequired: 0,
+          twoPerson: true,
         },
       ],
       members: [
         { orgId, address: TREASURY, name: "Treasury", role: "owner", addedBy: null, createdAt: now },
-        { orgId, address: APPROVER, name: "Dana Okafor", role: "admin", addedBy: TREASURY, createdAt: now },
+        { orgId, address: APPROVER, name: "Dana Okafor", role: "preparer", addedBy: TREASURY, createdAt: now },
       ],
       employees: SAMPLE_TEAM.map((e) => ({ ...e, id: uuid(), orgId })),
       approvals: {},
@@ -170,9 +171,9 @@ function paidHistory(orgId: string) {
   };
 }
 
-function messageFor(run: StoredRun, approver: string) {
+function messageFor(run: StoredRun, approver: string, build = approvalMessage) {
   const org = orgOf(run.orgId);
-  return approvalMessage({
+  return build({
     runId: run.id,
     onchainRef: run.onchainRef,
     items: state.app.items[run.id] ?? [],
@@ -208,7 +209,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     let membership = state.app.members.find((m) => same(m.address, address) && m.role !== "owner") ?? state.app.members.find((m) => same(m.address, address));
     if (!membership) {
       const id = uuid();
-      state.app.orgs.push({ id, ownerAddress: address, name: "My company", payDay: null, legalName: null, address: null, taxId: null, invoicePrefix: DEFAULT_PREFIX, invoiceNote: null, approvalsRequired: 0 });
+      state.app.orgs.push({ id, ownerAddress: address, name: "My company", payDay: null, legalName: null, address: null, taxId: null, invoicePrefix: DEFAULT_PREFIX, invoiceNote: null, approvalsRequired: 0, twoPerson: true });
       membership = { orgId: id, address, name: "", role: "owner", addedBy: null, createdAt: new Date().toISOString() };
       state.app.members.push(membership);
     }
@@ -266,13 +267,17 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     const s = member("team");
     if (parts[1] === "policy") {
       const parsed = policyInput.safeParse(body);
-      if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid approval rule.");
-      const n = parsed.data.approvalsRequired;
+      if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid payroll rule.");
+      const { approvalsRequired: n, twoPerson } = parsed.data;
       const approvers = state.app.members.filter((m) => m.orgId === s.orgId && can(m.role, "approve")).length;
-      if (n > 0 && n > approvers - 1) throw new HttpError(400, `You need at least ${n + 1} people who can approve for ${n} approval${n === 1 ? "" : "s"}. Add admins first.`);
+      if (n !== undefined && n > 0 && n > approvers - 1) throw new HttpError(400, `You need at least ${n + 1} people who can sign off for ${n} sign-off${n === 1 ? "" : "s"}. Add admins first.`);
       const org = orgOf(s.orgId);
-      if (org.approvalsRequired !== n) log(s.orgId, s.address, "policy_updated", { changes: { approvalsRequired: [String(org.approvalsRequired), String(n)] } });
-      org.approvalsRequired = n;
+      const changes: Record<string, [string, string]> = {};
+      if (n !== undefined && org.approvalsRequired !== n) changes.approvalsRequired = [String(org.approvalsRequired), String(n)];
+      if (twoPerson !== undefined && org.twoPerson !== twoPerson) changes.twoPerson = [org.twoPerson ? "on" : "off", twoPerson ? "on" : "off"];
+      if (Object.keys(changes).length) log(s.orgId, s.address, "policy_updated", { changes });
+      if (n !== undefined) org.approvalsRequired = n;
+      if (twoPerson !== undefined) org.twoPerson = twoPerson;
       persist();
       return [200, { org }];
     }
@@ -389,6 +394,10 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
     }
     if (parts.length === 1 && method === "POST") {
       const s = member("prepare");
+      const owner = orgOf(s.orgId);
+      if (owner.twoPerson && same(owner.ownerAddress, s.address)) {
+        throw new HttpError(403, "Two-person payroll is on: your accounts team prepares and signs payroll, and you approve it by sending.");
+      }
       const open = state.app.runs.find((r) => r.orgId === s.orgId && ["pending", "approved", "submitted"].includes(r.status));
       if (open) return [409, { error: "A payroll is already waiting for approval or being sent. Finish or cancel it first.", openRunId: open.id }];
       const cfg = need(getChainConfig((body as { chainId?: number })?.chainId), 400, "Payroll isn't available on this network.");
@@ -419,6 +428,7 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
         submittedBy: null,
         approvalCount: 0,
         rejection: null,
+        preparedSignature: null,
       };
       const items: RunItem[] = team.map((e) => ({ name: e.name, role: e.role, wallet: e.wallet, amount: e.amount, token: e.token as TokenSymbol, employeeId: e.id }));
       const h = paidHistory(s.orgId);
@@ -454,13 +464,26 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
 
     if (parts[2] === "request") {
       member("prepare");
-      if (run.status !== "draft" || !same(run.createdBy, s.address)) throw new HttpError(409, "Only the person who prepared this draft can send it for approval, and only once.");
+      if (!same(run.createdBy, s.address)) throw new HttpError(403, "Only the person who prepared this draft can submit it.");
+      const isTreasury = same(org.ownerAddress, s.address);
+      if (isTreasury && org.twoPerson) throw new HttpError(403, "Two-person payroll is on: your accounts team prepares and signs payroll, and you approve it by sending.");
+      const prepared = messageFor(run, s.address, preparedMessage);
+      if (method === "GET") return [200, { message: prepared }];
+      if (run.status !== "draft") throw new HttpError(409, "This draft was already submitted, or it's no longer a draft.");
+      if (!isTreasury) {
+        // Same rule as the server: everyone but the treasury signs exactly what they submit.
+        const signature = (body as { signature?: string })?.signature;
+        if (!signature || !isHex(signature)) throw new HttpError(400, "Sign the payroll with your wallet to submit it.");
+        const valid = await verifyMessage({ address: s.address as Hex, message: prepared, signature });
+        if (!valid) throw new HttpError(401, "That signature isn't a valid signature of this payroll from your wallet.");
+        run.preparedSignature = signature;
+      }
       if (state.app.runs.some((r) => r.orgId === s.orgId && r.id !== run.id && ["pending", "approved", "submitted"].includes(r.status))) {
         throw new HttpError(409, "Another payroll is already waiting for approval or being sent. Finish or cancel it first.");
       }
       run.verifiedWallets = verifiedIn((body as { verifiedWallets?: unknown })?.verifiedWallets, items);
       Object.assign(run, { requestedAt: new Date().toISOString(), status: org.approvalsRequired === 0 ? "approved" : "pending" });
-      log(s.orgId, s.address, "run_requested", { runId: run.id, recipients: run.recipientCount, totals: run.totals, verifiedWallets: run.verifiedWallets, status: run.status });
+      log(s.orgId, s.address, "run_requested", { runId: run.id, recipients: run.recipientCount, totals: run.totals, verifiedWallets: run.verifiedWallets, signed: !!run.preparedSignature, status: run.status });
       persist();
       return [200, { run: publicRun(run) }];
     }
@@ -514,9 +537,12 @@ async function route(method: string, path: string, body: unknown): Promise<[numb
       if (!same(org.ownerAddress, s.address)) throw new HttpError(403, "Only the treasury wallet can send payroll.");
       const txHash = (body as { txHash?: string })?.txHash;
       if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new HttpError(400, "Missing transaction hash.");
-      const sendable = ["pending", "approved", "submitted"].includes(run.status) || (run.status === "draft" && org.approvalsRequired === 0);
+      // Same rules as the server: two-person payroll never lets the treasury send what it prepared.
+      if (org.twoPerson && same(run.createdBy, s.address)) throw new HttpError(403, "Two-person payroll is on, so the treasury can't send a payroll it prepared.");
+      if (!same(run.createdBy, org.ownerAddress) && !run.preparedSignature) throw new HttpError(409, "Your accounts team has to sign and submit this payroll first.");
+      const sendable = ["pending", "approved", "submitted"].includes(run.status) || (run.status === "draft" && !org.twoPerson && org.approvalsRequired === 0);
       if (!sendable || approvals().length < org.approvalsRequired) {
-        throw new HttpError(409, `This payroll needs ${org.approvalsRequired} approval${org.approvalsRequired === 1 ? "" : "s"} before it can be sent.`);
+        throw new HttpError(409, `This payroll needs ${org.approvalsRequired} sign-off${org.approvalsRequired === 1 ? "" : "s"} before it can be sent.`);
       }
       if (run.status === "draft") run.verifiedWallets = verifiedIn((body as { verifiedWallets?: unknown })?.verifiedWallets, items);
       Object.assign(run, { status: "submitted", txHash, submittedBy: s.address });

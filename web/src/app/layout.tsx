@@ -6,7 +6,7 @@ import { THEME_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 
 const title = "Wagefold · Crypto payroll in one transaction";
-const description = "Connect your treasury wallet and pay your whole team in USDC or USDT with one signature.";
+const description = "Your accounts team prepares and signs payroll; your treasury approves it by sending. One transaction pays everyone in USDC or USDT.";
 
 export const metadata: Metadata = {
   // Absolute URLs for the social card; APP_DOMAIN is the public host in production.

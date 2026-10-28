@@ -66,11 +66,23 @@ export function usePayroll() {
     }
   }, []);
 
-  /** The preparer sends the reviewed draft for approval (or to the treasury when none is needed). */
-  const request = useCallback(async (run: Run, verifiedWallets: string[]) => {
-    await api(`/api/runs/${run.id}/request`, { body: { verifiedWallets } });
-    setPhase({ kind: "idle" });
-  }, []);
+  /**
+   * The preparer submits the reviewed draft. Everyone but the treasury signs the server's message for
+   * this exact run with their own wallet first; the treasury's signature is the payment itself.
+   */
+  const request = useCallback(
+    async (run: Run, verifiedWallets: string[], sign: boolean) => {
+      let signature: string | undefined;
+      if (sign) {
+        if (!walletClient || !address) throw new Error("Reconnect your wallet and try again.");
+        const { message } = await api<{ message: string }>(`/api/runs/${run.id}/request`);
+        signature = await walletClient.signMessage({ account: address, message });
+      }
+      await api(`/api/runs/${run.id}/request`, { body: { verifiedWallets, signature } });
+      setPhase({ kind: "idle" });
+    },
+    [address, walletClient],
+  );
 
   /** An approver signs the server's approval message for this exact run with their own wallet. */
   const approve = useCallback(

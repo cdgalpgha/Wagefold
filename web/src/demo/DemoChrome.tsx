@@ -13,7 +13,7 @@ export function DemoBanner() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2 text-[13px]">
         <span className="rounded bg-white/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide">Demo</span>
         <span className="flex-1 text-white/85">
-          Simulated network and test wallet with an example team. No real money moves. Payroll needs one approval: switch to Dana to approve.
+          Simulated network and test wallet with an example team. No real money moves. Payroll takes two people: switch to Dana (accounts) to prepare and sign it, then back to the treasury to approve and send.
         </span>
         <label className="flex items-center gap-2 text-white/85">
           Test wallet account

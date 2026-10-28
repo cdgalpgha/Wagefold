@@ -152,6 +152,12 @@ drop trigger if exists run_approvals_append_only on run_approvals;
 create trigger run_approvals_append_only before update or delete on run_approvals
   for each row execute function audit_events_append_only();
 
+-- Two-person payroll: the accounts team prepares and signs, the treasury approves by sending.
+alter table organizations add column if not exists two_person boolean not null default true;
+-- The preparer's signature over the exact run they submitted (written once, when it leaves draft).
+alter table payroll_runs add column if not exists prepared_message text;
+alter table payroll_runs add column if not exists prepared_signature text;
+
 -- At most one payroll in flight per company (waiting for approval, approved, or sent and not yet
 -- verified), enforced by the database so two runs can never both be approved and sent. Skipped,
 -- with a warning, if existing data already breaks the rule; the app still checks it before writing.

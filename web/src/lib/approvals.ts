@@ -34,20 +34,38 @@ export type ApprovalSubject = {
 };
 
 export function approvalMessage(s: ApprovalSubject): string {
+  return message(s, "Wagefold payroll approval", "I approve this payroll for", "Approver", "Signing approves this exact list of payments.");
+}
+
+/**
+ * What the accounts team signs when they submit a payroll: the same run, totals, treasury and
+ * payments hash, so the treasury knows exactly which list a named person prepared and checked.
+ */
+export function preparedMessage(s: ApprovalSubject): string {
+  return message(
+    s,
+    "Wagefold payroll, prepared for the treasury",
+    "I prepared this payroll and checked every wallet for",
+    "Prepared by",
+    "Signing submits this exact list to the treasury, which approves it by sending.",
+  );
+}
+
+function message(s: ApprovalSubject, heading: string, intro: string, signer: string, effect: string): string {
   const n = s.items.length;
   return [
-    "Wagefold payroll approval",
+    heading,
     "",
-    // One line, so a company name can't add lines that look like part of the approval.
-    `I approve this payroll for ${s.company.replace(/\s+/g, " ").trim()}:`,
+    // One line, so a company name can't add lines that look like part of the message.
+    `${intro} ${s.company.replace(/\s+/g, " ").trim()}:`,
     `Pay ${n} ${n === 1 ? "person" : "people"} ${totalsLabel(sumByToken(s.items))}`,
     `From treasury ${getAddress(s.treasury)}`,
     `On ${s.cfg.chain.name} (chain ${s.cfg.chain.id})`,
     "",
     `Run: ${s.runId}`,
     `Payments hash: ${paymentsHash(s.onchainRef, s.items, s.cfg)}`,
-    `Approver: ${getAddress(s.approver)}`,
+    `${signer}: ${getAddress(s.approver)}`,
     "",
-    "Signing approves this exact list of payments. It doesn't move funds or cost gas.",
+    `${effect} It doesn't move funds or cost gas.`,
   ].join("\n");
 }

@@ -1,6 +1,19 @@
 # Security review, October 2026
 
-Two passes: an automated review with scanners (22 October, below the first divider) and a manual audit of the code and repository (26 October, first). Each issue found is fixed and covered by an end-to-end test that performs the attack.
+Two passes, plus a follow-up: an automated review with scanners (22 October, below the first divider), a manual audit of the code and repository (26 October), and the two-person payroll rule (28 October, first). Each issue found is fixed and covered by an end-to-end test that performs the attack.
+
+## Two-person payroll, 28 October 2026
+
+Every payroll now takes two people by default: someone on the accounts team prepares it and signs it with their wallet, and the treasury approves it by sending. Owners can switch this off for solo use (logged). Enforcement is on the server and in the database statement that records the transaction:
+
+| Rule | Where | Test |
+|---|---|---|
+| The preparer's submission carries a wallet signature over a message the server rebuilds (run, totals, treasury, payments hash, preparer); it can't be reused as an approval | `POST /api/runs/:id/request`, ERC-1271 aware | Unsigned (400), someone else's signature (401) and a tampered message (401) are refused |
+| The treasury can't prepare a payroll while the rule is on | `POST /api/runs` | `a new company starts with two-person payroll on` |
+| The treasury can never send a run it prepared, and a run someone else prepared must carry their signature | `markRunSubmitted`, same statement as the update | `two-person payroll: the accounts team signs, the treasury approves by sending` |
+| Optional extra admin sign-offs still apply in between | unchanged | existing approval checks |
+
+Re-scan: 55 unit and 42 end-to-end checks pass; Semgrep 0 findings; gitleaks clean; ZAP results below.
 
 ## Manual code audit, 26 October 2026
 
