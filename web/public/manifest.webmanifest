@@ -4,8 +4,8 @@
   "description": "Pay your whole team in USDC or USDT with one signature.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F6F8",
-  "theme_color": "#2647D9",
+  "background_color": "#EBEFE8",
+  "theme_color": "#1D5A44",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },

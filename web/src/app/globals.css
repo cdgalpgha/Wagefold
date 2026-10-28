@@ -3,163 +3,162 @@
 @tailwind utilities;
 
 :root {
-  --c-canvas: 247 247 245;
-  --c-surface: 255 255 255;
-  --c-surface-2: 250 250 248;
-  --c-night: 17 19 24;
-  --c-ink: 17 19 24;
-  --c-ink-2: 78 82 92;
-  --c-ink-3: 102 107 117;
-  --c-line: 229 229 224;
-  --c-line-soft: 240 240 236;
-  --c-line-strong: 208 208 201;
-  --c-brand: 37 66 214;
-  --c-brand-solid: 37 66 214;
-  --c-brand-hover: 28 52 184;
-  --c-brand-dark: 28 50 170;
-  --c-brand-deep: 22 40 138;
-  --c-brand-soft: 236 239 252;
-  --c-brand-muted: 203 211 243;
-  --c-brand-muted-ink: 52 68 140;
-  --c-good: 10 104 64;
-  --c-good-soft: 231 243 235;
-  --c-good-dot: 22 158 92;
-  --c-bad: 178 36 26;
-  --c-bad-text: 156 30 22;
-  --c-bad-soft: 252 238 235;
-  --c-bad-line: 239 199 193;
-  --c-warn: 120 70 0;
-  --c-warn-soft: 252 244 228;
-  --c-warn-line: 240 218 170;
-  --c-warn-dot: 226 158 52;
-  --c-logo-a: 22 40 138;
-  --c-logo-b: 37 66 214;
-  --c-dots: 210 214 232;
-  --c-tone-1: 224 230 251;
-  --c-tone-2: 228 240 231;
-  --c-tone-3: 248 234 218;
-  --c-tone-4: 238 230 248;
-  --c-tone-5: 225 239 242;
-  --c-tone-6: 247 228 232;
-  /* Depth: a hairline plus a soft, close shadow. Nothing floats far off the page. */
-  --shadow-card: 0 1px 2px rgb(17 19 24 / 0.04), 0 1px 1px rgb(17 19 24 / 0.02);
-  --shadow-raised: 0 1px 2px rgb(17 19 24 / 0.06), 0 4px 12px -2px rgb(17 19 24 / 0.08);
-  --shadow-pop: 0 12px 32px -8px rgb(17 19 24 / 0.18), 0 2px 6px rgb(17 19 24 / 0.06);
-  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 1px 2px rgb(17 19 24 / 0.14);
+  --c-canvas: 235 239 232;
+  --c-surface: 248 250 245;
+  --c-surface-2: 241 244 237;
+  --c-night: 19 33 27;
+  --c-ink: 19 33 27;
+  --c-ink-2: 66 82 74;
+  --c-ink-3: 88 102 95;
+  --c-line: 210 218 207;
+  --c-line-soft: 225 231 222;
+  --c-line-strong: 182 193 180;
+  --c-brand: 29 90 68;
+  --c-brand-solid: 29 90 68;
+  --c-brand-hover: 22 74 55;
+  --c-brand-dark: 20 66 49;
+  --c-brand-deep: 14 50 37;
+  --c-brand-soft: 220 233 225;
+  --c-brand-muted: 185 208 195;
+  --c-brand-muted-ink: 40 84 66;
+  --c-brass: 128 88 22;
+  --c-good: 28 110 72;
+  --c-good-soft: 222 238 228;
+  --c-good-dot: 46 150 98;
+  --c-bad: 166 50 32;
+  --c-bad-text: 145 40 25;
+  --c-bad-soft: 247 227 222;
+  --c-bad-line: 232 192 184;
+  --c-warn: 122 78 0;
+  --c-warn-soft: 245 234 211;
+  --c-warn-line: 228 205 158;
+  --c-warn-dot: 201 138 30;
+  --c-logo-a: 14 50 37;
+  --c-logo-b: 62 155 114;
+  --c-dots: 196 210 198;
+  --c-tone-1: 214 228 218;
+  --c-tone-2: 232 223 204;
+  --c-tone-3: 216 224 233;
+  --c-tone-4: 234 218 214;
+  --c-tone-5: 222 229 204;
+  --c-tone-6: 227 219 233;
+  /* Paper, not glass: sheets sit flat with a hairline edge; only menus and dialogs lift off the page. */
+  --shadow-card: 0 1px 0 rgb(19 33 27 / 0.05);
+  --shadow-raised: 0 1px 0 rgb(19 33 27 / 0.06), 0 8px 18px -8px rgb(19 33 27 / 0.2);
+  --shadow-pop: 0 20px 44px -14px rgb(19 33 27 / 0.32), 0 2px 6px rgb(19 33 27 / 0.08);
+  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 1px 0 rgb(19 33 27 / 0.25);
   color-scheme: light;
 }
 /* Dark follows the system unless the person picked a theme (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  --c-canvas: 10 11 14;
-  --c-surface: 18 19 23;
-  --c-surface-2: 23 25 30;
-  --c-night: 26 28 34;
-  --c-ink: 237 238 241;
-  --c-ink-2: 162 166 175;
-  --c-ink-3: 133 138 148;
-  --c-line: 38 40 47;
-  --c-line-soft: 29 31 37;
-  --c-line-strong: 56 59 68;
-  --c-brand: 128 152 255;
-  --c-brand-solid: 61 92 235;
-  --c-brand-hover: 80 110 245;
-  --c-brand-dark: 172 188 255;
-  --c-brand-deep: 47 75 209;
-  --c-brand-soft: 26 32 62;
-  --c-brand-muted: 36 43 76;
-  --c-brand-muted-ink: 141 155 208;
-  --c-good: 86 214 152;
-  --c-good-soft: 16 38 29;
-  --c-good-dot: 38 196 122;
-  --c-bad: 246 120 120;
-  --c-bad-text: 250 170 170;
-  --c-bad-soft: 42 20 22;
-  --c-bad-line: 86 36 40;
-  --c-warn: 240 192 110;
-  --c-warn-soft: 40 31 17;
-  --c-warn-line: 86 67 33;
-  --c-warn-dot: 228 162 60;
-  --c-logo-a: 61 91 224;
-  --c-logo-b: 125 147 242;
-  --c-dots: 40 44 60;
-  --c-tone-1: 32 40 76;
-  --c-tone-2: 22 46 36;
-  --c-tone-3: 54 39 24;
-  --c-tone-4: 44 34 66;
-  --c-tone-5: 21 44 52;
-  --c-tone-6: 56 29 37;
-  /* On dark, shadows barely read: a faint top highlight gives surfaces their edge instead. */
-  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.035);
-  --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 6px 16px -4px rgb(0 0 0 / 0.5);
-  --shadow-pop: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 16px 40px -8px rgb(0 0 0 / 0.7);
-  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.4);
+  --c-canvas: 11 17 14;
+  --c-surface: 17 25 21;
+  --c-surface-2: 22 31 26;
+  --c-night: 20 30 25;
+  --c-ink: 228 236 230;
+  --c-ink-2: 164 178 169;
+  --c-ink-3: 134 149 140;
+  --c-line: 35 48 41;
+  --c-line-soft: 26 36 31;
+  --c-line-strong: 52 67 59;
+  --c-brand: 127 209 170;
+  --c-brand-solid: 39 118 86;
+  --c-brand-hover: 48 134 99;
+  --c-brand-dark: 169 227 198;
+  --c-brand-deep: 30 96 70;
+  --c-brand-soft: 22 48 37;
+  --c-brand-muted: 30 58 46;
+  --c-brand-muted-ink: 141 190 166;
+  --c-brass: 214 172 100;
+  --c-good: 110 214 158;
+  --c-good-soft: 18 42 31;
+  --c-good-dot: 52 184 120;
+  --c-bad: 240 128 110;
+  --c-bad-text: 246 172 160;
+  --c-bad-soft: 44 22 20;
+  --c-bad-line: 88 40 34;
+  --c-warn: 232 190 110;
+  --c-warn-soft: 40 31 16;
+  --c-warn-line: 86 66 30;
+  --c-warn-dot: 220 160 60;
+  --c-logo-a: 46 150 98;
+  --c-logo-b: 127 209 170;
+  --c-dots: 34 52 44;
+  --c-tone-1: 30 52 40;
+  --c-tone-2: 54 46 30;
+  --c-tone-3: 30 40 54;
+  --c-tone-4: 56 34 34;
+  --c-tone-5: 44 50 28;
+  --c-tone-6: 46 36 58;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 8px 20px -6px rgb(0 0 0 / 0.55);
+  --shadow-pop: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 20px 44px -10px rgb(0 0 0 / 0.75);
+  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 1px 0 rgb(0 0 0 / 0.5);
   color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --c-canvas: 10 11 14;
-  --c-surface: 18 19 23;
-  --c-surface-2: 23 25 30;
-  --c-night: 26 28 34;
-  --c-ink: 237 238 241;
-  --c-ink-2: 162 166 175;
-  --c-ink-3: 133 138 148;
-  --c-line: 38 40 47;
-  --c-line-soft: 29 31 37;
-  --c-line-strong: 56 59 68;
-  --c-brand: 128 152 255;
-  --c-brand-solid: 61 92 235;
-  --c-brand-hover: 80 110 245;
-  --c-brand-dark: 172 188 255;
-  --c-brand-deep: 47 75 209;
-  --c-brand-soft: 26 32 62;
-  --c-brand-muted: 36 43 76;
-  --c-brand-muted-ink: 141 155 208;
-  --c-good: 86 214 152;
-  --c-good-soft: 16 38 29;
-  --c-good-dot: 38 196 122;
-  --c-bad: 246 120 120;
-  --c-bad-text: 250 170 170;
-  --c-bad-soft: 42 20 22;
-  --c-bad-line: 86 36 40;
-  --c-warn: 240 192 110;
-  --c-warn-soft: 40 31 17;
-  --c-warn-line: 86 67 33;
-  --c-warn-dot: 228 162 60;
-  --c-logo-a: 61 91 224;
-  --c-logo-b: 125 147 242;
-  --c-dots: 40 44 60;
-  --c-tone-1: 32 40 76;
-  --c-tone-2: 22 46 36;
-  --c-tone-3: 54 39 24;
-  --c-tone-4: 44 34 66;
-  --c-tone-5: 21 44 52;
-  --c-tone-6: 56 29 37;
-  /* On dark, shadows barely read: a faint top highlight gives surfaces their edge instead. */
-  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.035);
-  --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 6px 16px -4px rgb(0 0 0 / 0.5);
-  --shadow-pop: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 16px 40px -8px rgb(0 0 0 / 0.7);
-  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.4);
+  --c-canvas: 11 17 14;
+  --c-surface: 17 25 21;
+  --c-surface-2: 22 31 26;
+  --c-night: 20 30 25;
+  --c-ink: 228 236 230;
+  --c-ink-2: 164 178 169;
+  --c-ink-3: 134 149 140;
+  --c-line: 35 48 41;
+  --c-line-soft: 26 36 31;
+  --c-line-strong: 52 67 59;
+  --c-brand: 127 209 170;
+  --c-brand-solid: 39 118 86;
+  --c-brand-hover: 48 134 99;
+  --c-brand-dark: 169 227 198;
+  --c-brand-deep: 30 96 70;
+  --c-brand-soft: 22 48 37;
+  --c-brand-muted: 30 58 46;
+  --c-brand-muted-ink: 141 190 166;
+  --c-brass: 214 172 100;
+  --c-good: 110 214 158;
+  --c-good-soft: 18 42 31;
+  --c-good-dot: 52 184 120;
+  --c-bad: 240 128 110;
+  --c-bad-text: 246 172 160;
+  --c-bad-soft: 44 22 20;
+  --c-bad-line: 88 40 34;
+  --c-warn: 232 190 110;
+  --c-warn-soft: 40 31 16;
+  --c-warn-line: 86 66 30;
+  --c-warn-dot: 220 160 60;
+  --c-logo-a: 46 150 98;
+  --c-logo-b: 127 209 170;
+  --c-dots: 34 52 44;
+  --c-tone-1: 30 52 40;
+  --c-tone-2: 54 46 30;
+  --c-tone-3: 30 40 54;
+  --c-tone-4: 56 34 34;
+  --c-tone-5: 44 50 28;
+  --c-tone-6: 46 36 58;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --shadow-raised: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 8px 20px -6px rgb(0 0 0 / 0.55);
+  --shadow-pop: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 20px 44px -10px rgb(0 0 0 / 0.75);
+  --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 1px 0 rgb(0 0 0 / 0.5);
   color-scheme: dark;
 }
 
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 body { @apply bg-canvas text-ink font-sans; }
-::selection { background: rgb(var(--c-brand) / 0.18); }
+::selection { background: rgb(var(--c-brand) / 0.2); }
+/* Headlines are set wide, like the lettering engraved on banknotes and cheques. */
+h1, .font-display { font-family: "Archivo", "Geist", system-ui, sans-serif; font-stretch: 118%; font-weight: 640; letter-spacing: -0.012em; }
 :focus-visible { outline: 2px solid rgb(var(--c-brand)); outline-offset: 2px; }
 .tabular { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* Landing page motion. Everything here is switched off by the reduced-motion rule above. */
-@keyframes wf-float { 0%, 100% { transform: translate3d(0, 0, var(--z, 0px)); } 50% { transform: translate3d(0, -10px, var(--z, 0px)); } }
 @keyframes wf-coin { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
-@keyframes wf-dash { to { stroke-dashoffset: -28; } }
 @keyframes wf-rail { 0% { left: 0%; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
 @keyframes wf-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-.wf-float { animation: wf-float 6s ease-in-out infinite; }
 .wf-coin-spin { animation: wf-coin 9s linear infinite; }
-.wf-dash { animation: wf-dash 1.6s linear infinite; }
 .wf-rail-dot { animation: wf-rail 4.5s ease-in-out infinite; }
 .wf-rise { animation: wf-rise 0.7s ease-out both; }
 /* Loading mark: the two strokes fold in from opposite sides, then rest. */
@@ -167,5 +166,8 @@ body { @apply bg-canvas text-ink font-sans; }
 @keyframes wf-fold-b { 0%, 15% { transform: translateX(6px); opacity: 0; } 50%, 100% { transform: none; opacity: 1; } }
 .wf-fold path:first-child { animation: wf-fold-b 1.6s cubic-bezier(.2,.7,.2,1) infinite alternate; }
 .wf-fold path:last-child { animation: wf-fold-a 1.6s cubic-bezier(.2,.7,.2,1) infinite alternate; }
+/* The treasury's signature on the landing cheque writes itself once, then stays. */
+@keyframes wf-sign { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.wf-sign { stroke-dasharray: 1; stroke-dashoffset: 0; animation: wf-sign 1.8s 0.5s cubic-bezier(.45,.05,.3,1) both; }
 .preserve-3d { transform-style: preserve-3d; }
 .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }

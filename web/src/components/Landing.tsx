@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BRAND_LOGOS, type BrandLogo } from "./brand-logos";
 import { Logo, LogoMark } from "./Logo";
+import { ChequeBand, ChequeLine, Guilloche, Perforation } from "./Security";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletPicker } from "./WalletPicker";
 
@@ -78,8 +79,8 @@ export function Landing() {
   const connect = () => setPicking(true);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-surface">
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
+    <div className="min-h-screen overflow-x-hidden bg-canvas">
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur">
         <div className={`mx-auto flex max-w-6xl items-center gap-6 py-3 ${gutter}`}>
           <Logo className="h-7" />
           <nav aria-label="Sections" className="hidden flex-1 gap-1 text-sm font-medium text-ink-2 md:flex">
@@ -89,7 +90,7 @@ export function Landing() {
             <a href="#faq" className="rounded-lg px-3 py-2 hover:bg-line-soft hover:text-ink">FAQ</a>
           </nav>
           <ThemeToggle className="ml-auto hidden sm:inline-flex md:ml-0" />
-          <button type="button" onClick={connect} className="ml-auto min-h-11 rounded-xl bg-brand-solid px-4 text-sm font-semibold text-white shadow-[0_6px_16px_-6px_rgba(38,71,217,0.6)] hover:bg-brand-hover sm:ml-0">
+          <button type="button" onClick={connect} className="ml-auto min-h-11 rounded-lg bg-brand-solid px-4 text-sm font-semibold text-white shadow-button transition-colors hover:bg-brand-hover sm:ml-0">
             Connect wallet
           </button>
         </div>
@@ -98,39 +99,35 @@ export function Landing() {
       <main>
         {/* Hero ---------------------------------------------------------------------------------- */}
         <section className="relative bg-canvas">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.55] [background-image:radial-gradient(rgb(var(--c-dots))_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_70%_40%,black,transparent_70%)]" />
           <div className={`relative mx-auto grid max-w-6xl items-center gap-14 py-16 lg:grid-cols-[1fr_1.05fr] lg:py-24 ${gutter}`}>
             <div className="wf-rise">
-              <p className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[13px] font-semibold text-brand-dark">
-                <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
-                Crypto payroll on Base
-              </p>
-              <h1 className="mt-5 text-balance text-[44px] font-semibold leading-[1.04] tracking-tight sm:text-[60px]">
-                Pay your whole team in <span className="text-brand">one transaction.</span>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Stablecoin payroll on Base</p>
+              <h1 className="mt-5 text-balance text-[42px] font-semibold leading-[1.02] sm:text-[58px]">
+                Pay your whole team with <span className="text-brand">one signature.</span>
               </h1>
               <p className="mt-5 max-w-[54ch] text-lg leading-relaxed text-ink-2">
                 Keep your team in one list. On payday, Wagefold pulls every name, wallet and amount, and pays everyone in USDC or USDT from
                 your treasury wallet with a single signature.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <button type="button" onClick={connect} className="inline-flex min-h-14 items-center gap-2 rounded-xl bg-brand-solid px-7 text-[17px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(38,71,217,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-hover">
+                <button type="button" onClick={connect} className="inline-flex min-h-14 items-center gap-2 rounded-lg bg-brand-solid px-7 text-[16px] font-semibold text-white shadow-button transition-colors hover:bg-brand-hover">
                   Connect wallet
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                 </button>
-                <a href="#how" className="inline-flex min-h-14 items-center rounded-xl px-5 text-[17px] font-semibold text-ink hover:bg-surface">How it works</a>
+                <a href="#how" className="inline-flex min-h-14 items-center rounded-lg px-5 text-[16px] font-semibold text-ink underline decoration-line-strong underline-offset-[6px] hover:decoration-ink">How it works</a>
               </div>
               <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3">
                 <span className="text-[13px] font-medium text-ink-2">Works with</span>
                 <ul className="flex items-center gap-2.5">
                   {WALLETS.map((w) => (
-                    <li key={w.key} className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface shadow-sm" title={BRAND_LOGOS[w.key].name}>
+                    <li key={w.key} className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-surface" title={BRAND_LOGOS[w.key].name}>
                       <BrandImg logo={w.key} className="h-6 w-6" />
                     </li>
                   ))}
                 </ul>
               </div>
             </div>
-            <Hero3D />
+            <HeroCheque />
           </div>
         </section>
 
@@ -152,13 +149,13 @@ export function Landing() {
         {/* How it works ---------------------------------------------------------------------------- */}
         <section id="how" className="scroll-mt-20">
           <div className={`mx-auto max-w-6xl py-20 ${gutter}`}>
-            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-brand">How it works</p>
-            <h2 className="mt-2 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Payday in three steps</h2>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">How it works</p>
+            <h2 className="mt-2 text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Payday in three steps</h2>
             <ol className="mt-10 grid gap-6 md:grid-cols-3">
               {STEPS.map((s, i) => (
-                <li key={s.title} className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_-24px_rgba(14,20,32,0.35)]">
+                <li key={s.title} className="group relative flex flex-col gap-3 rounded-xl border border-line bg-surface p-6">
                   <div className="flex items-center justify-between">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface-2 text-brand">
                       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{s.icon}</svg>
                     </span>
                     <span className="font-mono text-sm text-ink-3">Step {i + 1}</span>
@@ -176,12 +173,12 @@ export function Landing() {
         <section id="wallets" className="scroll-mt-20 bg-canvas">
           <div className={`mx-auto grid max-w-6xl gap-12 py-20 lg:grid-cols-[1.2fr_1fr] ${gutter}`}>
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-brand">Wallets</p>
-              <h2 className="mt-2 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Use the wallet you already have</h2>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Wallets</p>
+              <h2 className="mt-2 text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Use the wallet you already have</h2>
               <p className="mt-3 max-w-[52ch] text-lg text-ink-2">Connect a single-signer wallet or a Safe, where your approvers become its signers.</p>
               <ul className="mt-8 grid gap-3 sm:grid-cols-2">
                 {WALLETS.map((w) => (
-                  <li key={w.key} className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-22px_rgba(14,20,32,0.4)]">
+                  <li key={w.key} className="flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
                     <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-canvas">
                       <BrandImg logo={w.key} className="h-8 w-8" />
                     </span>
@@ -191,7 +188,7 @@ export function Landing() {
                     </span>
                   </li>
                 ))}
-                <li className="flex items-center gap-4 rounded-2xl border border-dashed border-line-strong bg-surface/60 p-4">
+                <li className="flex items-center gap-4 rounded-xl border border-dashed border-line-strong bg-surface/60 p-4">
                   <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-canvas text-ink-2" aria-hidden="true">
                     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M7 6.5h.01M10 6.5h.01" /></svg>
                   </span>
@@ -203,8 +200,8 @@ export function Landing() {
               </ul>
             </div>
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.08em] text-brand">Stablecoins</p>
-              <h2 className="mt-2 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Paid in digital dollars</h2>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Stablecoins</p>
+              <h2 className="mt-2 text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Paid in digital dollars</h2>
               <div className="mt-8 grid gap-4">
                 <TokenCard logo="usdc" title="USD Coin (USDC)" body="Issued by Circle. Each person can be paid in USDC, USDT or a mix across the team." />
                 <TokenCard logo="usdt" title="Tether (USDT)" body="Issued by Tether. Totals per token are shown before you sign, with your available balance." />
@@ -216,8 +213,8 @@ export function Landing() {
         {/* Measured --------------------------------------------------------------------------------- */}
         <section className="bg-night text-white">
           <div className={`mx-auto max-w-6xl py-20 ${gutter}`}>
-            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#9FB0F0]">Measured, not estimated</p>
-            <h2 className="mt-2 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Paying 100 people: one run versus 100 transfers</h2>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-logo-b">Measured, not estimated</p>
+            <h2 className="mt-2 max-w-2xl text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Paying 100 people: one run versus 100 transfers</h2>
             <div className="mt-12 grid gap-10 lg:grid-cols-2">
               <GasBars />
               <SignatureDots />
@@ -232,12 +229,12 @@ export function Landing() {
         {/* Safety ------------------------------------------------------------------------------------ */}
         <section id="safety" className="scroll-mt-20">
           <div className={`mx-auto max-w-6xl py-20 ${gutter}`}>
-            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-brand">Safety</p>
-            <h2 className="mt-2 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Built for the moments payroll goes wrong</h2>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">Safety</p>
+            <h2 className="mt-2 max-w-2xl text-balance font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Built for the moments payroll goes wrong</h2>
             <p className="mt-3 max-w-[60ch] text-lg text-ink-2">Crypto payments can&apos;t be reversed, so the safeguards sit before the signature, not after.</p>
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {SAFEGUARDS.map((f) => (
-                <div key={f.title} className="flex gap-3 rounded-2xl border border-line p-5 transition hover:border-brand/30 hover:bg-brand-soft/30">
+                <div key={f.title} className="flex gap-3 rounded-xl border border-line p-5 transition hover:border-brand/30 hover:bg-brand-soft/30">
                   <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-good-soft text-good" aria-hidden="true">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
                   </span>
@@ -254,7 +251,7 @@ export function Landing() {
         {/* FAQ --------------------------------------------------------------------------------------- */}
         <section id="faq" className="scroll-mt-20 bg-canvas">
           <div className={`mx-auto max-w-3xl py-20 ${gutter}`}>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Questions</h2>
+            <h2 className="font-display text-3xl font-semibold tracking-[-0.01em] sm:text-[40px]">Questions</h2>
             <div className="mt-8 divide-y divide-line border-y border-line">
               {FAQ.map((f) => (
                 <details key={f.q} className="group py-4">
@@ -271,14 +268,13 @@ export function Landing() {
 
         {/* CTA ---------------------------------------------------------------------------------------- */}
         <section className="relative overflow-hidden bg-brand-solid text-white">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-white/10" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 right-40 h-72 w-72 rounded-full bg-brand-deep/40" />
+          <Guilloche className="pointer-events-none absolute inset-0 h-full w-full text-white opacity-25" />
           <div className={`relative mx-auto flex max-w-6xl flex-col items-start gap-6 py-16 md:flex-row md:items-center md:justify-between ${gutter}`}>
             <div>
-              <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-tight">Run your next payroll with one signature.</h2>
+              <h2 className="max-w-xl text-balance font-display text-3xl font-semibold tracking-[-0.01em]">Run your next payroll with one signature.</h2>
               <p className="mt-2 text-white/80">Connect a wallet to start. It takes about five minutes to add your team.</p>
             </div>
-            <button type="button" onClick={connect} className="min-h-14 rounded-xl bg-white px-7 text-[17px] font-semibold text-[#2647D9] shadow-[0_12px_28px_-12px_rgba(14,20,32,0.6)] transition hover:-translate-y-0.5">
+            <button type="button" onClick={connect} className="min-h-14 rounded-lg bg-white px-7 text-[16px] font-semibold text-brand-deep transition-colors hover:bg-white/90">
               Connect wallet
             </button>
           </div>
@@ -306,7 +302,7 @@ function BrandImg({ logo, className }: { logo: BrandLogo; className?: string }) 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div className="flex flex-col gap-1 px-2">
-      <dt className="text-2xl font-semibold tracking-tight">{value}</dt>
+      <dt className="font-display text-2xl font-semibold">{value}</dt>
       <dd className="text-sm text-ink-2">{label}</dd>
     </div>
   );
@@ -314,7 +310,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function TokenCard({ logo, title, body }: { logo: BrandLogo; title: string; body: string }) {
   return (
-    <div className="flex items-start gap-4 rounded-2xl border border-line bg-surface p-5">
+    <div className="flex items-start gap-4 rounded-xl border border-line bg-surface p-5">
       <Coin logo={logo} size={56} spin={false} />
       <div>
         <h3 className="font-semibold">{title}</h3>
@@ -322,30 +318,6 @@ function TokenCard({ logo, title, body }: { logo: BrandLogo; title: string; body
       </div>
     </div>
   );
-}
-
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const on = () => setReduced(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return reduced;
-}
-
-function useMediaQuery(query: string) {
-  const [match, setMatch] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    setMatch(mq.matches);
-    const on = () => setMatch(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, [query]);
-  return match;
 }
 
 function useInView<T extends Element>() {
@@ -385,120 +357,75 @@ function Coin({ logo, size, spin = true, style }: { logo: BrandLogo; size: numbe
   );
 }
 
-/** The product in a picture: one treasury fanning out to the whole team, tilted in 3D. */
-function Hero3D() {
-  const reduced = usePrefersReducedMotion();
-  const wide = useMediaQuery("(min-width: 1024px)");
-  const flat = reduced || !wide; // phones and tablets get a flat card that fits the screen
-  const [tilt, setTilt] = useState({ rx: 8, ry: -14 });
-  const onMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (flat || e.pointerType !== "mouse") return;
-    const r = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5;
-    const y = (e.clientY - r.top) / r.height - 0.5;
-    setTilt({ rx: 8 - y * 10, ry: -14 + x * 14 });
-  };
-  const rows = PREVIEW.length;
-  const rowGap = 64;
-  const top = 32;
-  const height = top * 2 + rowGap * (rows - 1);
-  const mid = height / 2;
-  const paths = PREVIEW.map((_, i) => `M 34 ${mid} C 80 ${mid}, 70 ${top + i * rowGap}, 120 ${top + i * rowGap}`);
-
+/**
+ * The product in one picture: this month's payroll as a single cheque, signed once by the treasury,
+ * with the pay stub listing everyone it pays. The signature draws itself once on load.
+ */
+function HeroCheque() {
   return (
-    <div className="relative mx-auto mt-8 w-full max-w-[540px] [perspective:1400px] lg:mt-0" onPointerMove={onMove} onPointerLeave={() => setTilt({ rx: 8, ry: -14 })}>
-      <div
-        className="preserve-3d relative"
-        style={{ transform: flat ? "none" : `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`, transition: "transform 400ms cubic-bezier(.2,.7,.2,1)" }}
-      >
-        {/* back plate for depth */}
-        <div aria-hidden="true" className="absolute inset-0 rounded-[28px] bg-brand/15" style={{ transform: "translateZ(-40px) translate(18px, 18px)" }} />
-
-        <figure className="relative rounded-[24px] border border-line bg-surface p-5 shadow-[0_40px_80px_-40px_rgba(14,20,32,0.45)] sm:p-6">
-          <div className="flex items-center justify-between gap-3 border-b border-line-soft pb-4">
-            <div>
-              <p className="text-xs font-medium text-ink-2">October payroll</p>
-              <p className="tabular mt-0.5 text-sm font-semibold tracking-[-0.01em] sm:text-lg">30,900 USDC + 12,500 USDT</p>
-            </div>
-            <span className="whitespace-nowrap rounded-full bg-good-soft px-2.5 py-1 text-xs font-semibold text-good">1 transaction</span>
+    <figure className="wf-rise relative mx-auto w-full max-w-[540px]">
+      <div className="overflow-hidden rounded-[10px] border border-line bg-surface shadow-pop lg:rotate-[-1deg]">
+        <ChequeBand left="Northwind Labs" right="No. 0012" />
+        <div className="flex flex-col gap-5 px-6 pb-6 pt-5 sm:px-8">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-3">October payroll</span>
+            <span className="text-[12px] text-ink-2">Due Fri, Oct 31</span>
           </div>
-          <div className="relative mt-4 grid grid-cols-[64px_1fr] sm:grid-cols-[120px_1fr]">
-            <div className="relative">
-              <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 120 ${height}`} preserveAspectRatio="none" aria-hidden="true">
-                {paths.map((d, i) => (
-                  <g key={i}>
-                    <path d={d} fill="none" className="stroke-brand" strokeOpacity={0.18} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-                    <path d={d} fill="none" strokeOpacity={0.7} strokeWidth="2" strokeDasharray="4 10" vectorEffect="non-scaling-stroke" className="wf-dash stroke-brand" />
-                    {!reduced && (
-                      <circle r="3.5" className="fill-brand">
-                        <animateMotion dur="2.4s" repeatCount="indefinite" begin={`${i * 0.35}s`} path={d} />
-                      </circle>
-                    )}
-                  </g>
-                ))}
-              </svg>
-              <div className="absolute left-0 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-night text-white shadow-lg">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4" /><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M16 13.5h2" /></svg>
-                </span>
-                <span className="text-[11px] font-medium text-ink-2">Treasury</span>
-              </div>
-            </div>
-            <ul className="flex flex-col" style={{ gap: rowGap - 48, paddingBlock: top - 24 }}>
-              {PREVIEW.map((p) => (
-                <li key={p.name} className="flex h-12 items-center gap-2 rounded-xl border border-line bg-surface px-2 sm:gap-3 sm:px-3">
-                  <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-good-soft text-good sm:h-7 sm:w-7" aria-hidden="true">
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
-                  <span className="tabular flex items-center gap-1 whitespace-nowrap text-xs font-medium sm:gap-1.5 sm:text-[13px]">
-                    {p.amount}
-                    <BrandImg logo={p.token} className="h-4 w-4" />
-                  </span>
-                </li>
-              ))}
+          <ChequeLine label="Pay">
+            <p className="font-display text-[36px] font-semibold leading-none sm:text-[46px]">5 people</p>
+          </ChequeLine>
+          <ChequeLine label="The sum of" rule>
+            <ul className="flex flex-col gap-0.5">
+              <li className="tabular font-display text-[18px] font-semibold sm:text-[21px]">30,900.00 <span className="text-ink-2">USDC</span></li>
+              <li className="tabular font-display text-[18px] font-semibold sm:text-[21px]">12,500.00 <span className="text-ink-2">USDT</span></li>
             </ul>
-          </div>
-          <figcaption className="mt-4 text-xs text-ink-2">Example team. Every payment is checked on-chain after it lands.</figcaption>
-        </figure>
-
-        {/* floating layers in front of the card */}
-        <div className="preserve-3d pointer-events-none absolute right-3 -top-7 lg:-right-8 lg:-top-8" style={{ transform: "translateZ(110px)" }}>
-          <div className="wf-float">
-            <Coin logo="usdc" size={wide ? 76 : 52} />
-          </div>
-        </div>
-        <div className="preserve-3d pointer-events-none absolute -bottom-8 left-3 lg:-bottom-10 lg:-left-10" style={{ transform: "translateZ(80px)" }}>
-          <div className="wf-float" style={{ animationDelay: "-3s" }}>
-            <Coin logo="usdt" size={wide ? 64 : 46} />
-          </div>
-        </div>
-        <div className="pointer-events-none absolute -left-6 top-24 hidden sm:block" style={{ transform: "translateZ(60px)" }} aria-hidden="true">
-          <div className="wf-float flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold shadow-[0_18px_30px_-18px_rgba(14,20,32,0.5)]" style={{ animationDelay: "-1.5s" }}>
-            <BrandImg logo="metamask" className="h-5 w-5" /> Signed once
-          </div>
-        </div>
-        <div className="pointer-events-none absolute -bottom-6 right-6" style={{ transform: "translateZ(70px)" }} aria-hidden="true">
-          <div className="wf-float flex items-center gap-2 rounded-xl bg-night px-3 py-2 text-xs font-semibold text-white shadow-xl" style={{ animationDelay: "-4.5s" }}>
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-good-dot">
-              <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"><path d="m5 12 5 5 9-10" /></svg>
+          </ChequeLine>
+          <div className="flex items-end justify-between gap-4">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Signed once</span>
+            <span className="flex flex-col items-end">
+              <svg className="h-10 w-40 text-brand" viewBox="0 0 160 40" fill="none" aria-hidden="true">
+                <path
+                  className="wf-sign"
+                  pathLength={1}
+                  d="M4 30c8-14 14-22 18-20s-6 22-2 22 12-26 18-24-4 20 2 20 8-14 14-14 2 12 8 12 10-18 16-18-2 16 4 16 14-8 22-10 18 0 28-2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="border-t border-line-strong pt-1 font-mono text-[11.5px] text-ink-2">0xf39F…2266 · treasury</span>
             </span>
-            Verified on Base
           </div>
         </div>
+        <Perforation />
+        <ul className="divide-y divide-line-soft bg-surface-2 px-6 sm:px-8">
+          {PREVIEW.map((p) => (
+            <li key={p.name} className="flex min-h-11 items-center gap-3 text-sm">
+              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+              <span className="tabular flex items-center gap-1.5 whitespace-nowrap font-medium">
+                {p.amount}
+                <BrandImg logo={p.token} className="h-4 w-4" />
+              </span>
+            </li>
+          ))}
+        </ul>
+        <figcaption className="border-t border-line-soft bg-surface-2 px-6 py-3 text-xs text-ink-3 sm:px-8">
+          Example team. One transaction on Base pays all five; each payment is checked on-chain after it lands.
+        </figcaption>
       </div>
-    </div>
+    </figure>
   );
 }
 
 /** Infographic: the five stages every payroll run goes through, with a pulse moving along the rail. */
 function RunPipeline() {
   return (
-    <div className="mt-14 rounded-[24px] border border-line bg-canvas p-6 sm:p-8">
+    <div className="mt-14 rounded-xl border border-line bg-canvas p-6 sm:p-8">
       <h3 className="text-lg font-semibold">Inside one payroll run</h3>
       <div className="relative mt-8">
         <div aria-hidden="true" className="absolute left-[10%] right-[10%] top-5 hidden h-0.5 bg-line md:block">
-          <span className="wf-rail-dot absolute -top-[5px] h-3 w-3 -translate-x-1/2 rounded-full bg-brand shadow-[0_0_0_6px_rgba(38,71,217,0.15)]" />
+          <span className="wf-rail-dot absolute -top-[5px] h-3 w-3 -translate-x-1/2 rounded-full bg-brand shadow-[0_0_0_6px_rgb(var(--c-brand)/0.15)]" />
         </div>
         <ol className="relative grid gap-6 md:grid-cols-5">
           {PIPELINE.map((s, i) => (
@@ -525,13 +452,13 @@ function GasBars() {
   const saved = Math.round((1 - GAS.wagefold / GAS.separate) * 100);
   const fmt = (n: number) => n.toLocaleString("en-US");
   return (
-    <div ref={ref} className="rounded-[20px] bg-white/[0.04] p-6 ring-1 ring-white/10">
+    <div ref={ref} className="rounded-xl bg-white/[0.04] p-6 ring-1 ring-white/10">
       <p className="text-sm text-white/70">Gas used</p>
       <p className="mt-1 text-4xl font-semibold tracking-tight">{saved}% less</p>
       <div className="mt-6 flex flex-col gap-5" role="img" aria-label={`100 separate transfers used ${fmt(GAS.separate)} gas; one Wagefold run used ${fmt(GAS.wagefold)} gas.`}>
         {[
           { label: "100 separate transfers", value: GAS.separate, width: 100, color: "bg-white/35" },
-          { label: "One Wagefold run", value: GAS.wagefold, width: pct, color: "bg-[#7D93F2]" },
+          { label: "One Wagefold run", value: GAS.wagefold, width: pct, color: "bg-logo-b" },
         ].map((b) => (
           <div key={b.label}>
             <div className="flex justify-between gap-3 text-sm">
@@ -551,7 +478,7 @@ function GasBars() {
 /** Infographic: signatures needed, one dot per signature. */
 function SignatureDots() {
   return (
-    <div className="rounded-[20px] bg-white/[0.04] p-6 ring-1 ring-white/10">
+    <div className="rounded-xl bg-white/[0.04] p-6 ring-1 ring-white/10">
       <p className="text-sm text-white/70">Signatures needed</p>
       <p className="mt-1 text-4xl font-semibold tracking-tight">100 → 1</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-[1fr_auto] sm:items-end">
@@ -564,7 +491,7 @@ function SignatureDots() {
           <p className="mt-2 text-[13px] text-white/70">Separate transfers: one per person</p>
         </div>
         <div className="flex flex-col items-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#7D93F2] shadow-[0_0_0_10px_rgba(125,147,242,0.15)]" role="img" aria-label="One signature for a Wagefold run">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-logo-b shadow-[0_0_0_10px_rgb(var(--c-logo-b)/0.15)]" role="img" aria-label="One signature for a Wagefold run">
             <svg className="h-7 w-7 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
           </span>
           <p className="mt-2 text-[13px] text-white/70">Wagefold: one per run</p>

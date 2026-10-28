@@ -45,7 +45,7 @@ export function WalletPicker({ open, onClose }: { open: boolean; onClose: () => 
         aria-modal="true"
         aria-labelledby="picker-title"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-[20px] bg-surface p-6 shadow-2xl"
+        className="w-full max-w-md rounded-xl bg-surface p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -64,7 +64,7 @@ export function WalletPicker({ open, onClose }: { open: boolean; onClose: () => 
               type="button"
               onClick={() => connect({ connector: c })}
               disabled={isPending}
-              className="flex min-h-16 items-center gap-3.5 rounded-2xl border border-line bg-surface px-4 py-2.5 text-left transition-colors hover:border-brand/40 hover:bg-brand-soft/40 disabled:opacity-60"
+              className="flex min-h-16 items-center gap-3.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-left transition-colors hover:border-brand/40 hover:bg-brand-soft/40 disabled:opacity-60"
             >
               <WalletIcon connector={c} />
               <span className="flex flex-1 flex-col gap-0.5">

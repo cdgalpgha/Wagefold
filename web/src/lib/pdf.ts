@@ -100,7 +100,7 @@ function rule(k: Kit, page: PDFPage, top: number, x1 = M, x2 = A4.w - M) {
 function logo(k: Kit, page: PDFPage, x: number, top: number, markSize: number, withWordmark: boolean) {
   const s = markSize / 48;
   page.drawSvgPath(W_DARK, { x, y: A4.h - top, scale: s, color: k.color(BRAND.deep) });
-  page.drawSvgPath(W_LIGHT, { x, y: A4.h - top, scale: s, color: k.color(BRAND.blue) });
+  page.drawSvgPath(W_LIGHT, { x, y: A4.h - top, scale: s, color: k.color(BRAND.green) });
   if (withWordmark) {
     // Wordmark glyphs span y 29.5–116.7 in their own units; scale them to the mark's cap height.
     const ws = (markSize * 0.82) / 87;
@@ -113,7 +113,7 @@ function money(v: string): string {
 }
 
 function header(k: Kit, page: PDFPage, title: string, subtitle: string) {
-  page.drawRectangle({ x: 0, y: A4.h - 6, width: A4.w, height: 6, color: k.color(BRAND.blue) });
+  page.drawRectangle({ x: 0, y: A4.h - 6, width: A4.w, height: 6, color: k.color(BRAND.green) });
   logo(k, page, M, 40, 22, true);
   text(k, page, title, A4.w - M, 38, { size: 20, font: k.fonts.bold, align: "right" });
   text(k, page, subtitle, A4.w - M, 64, { size: 10, color: BRAND.ink2, align: "right" });
@@ -208,7 +208,7 @@ function drawInvoice(k: Kit, page: PDFPage, inv: InvoiceData) {
   if (inv.txHash) {
     y = text(k, page, "TRANSACTION", M + 14, y + 8, { size: 7, font: k.fonts.bold, color: BRAND.ink3 });
     y = text(k, page, inv.txHash, M + 14, y + 1, { size: 8, font: k.fonts.mono, width: inner });
-    if (inv.explorer) y = text(k, page, inv.explorer, M + 14, y + 2, { size: 8, color: BRAND.blue, width: inner });
+    if (inv.explorer) y = text(k, page, inv.explorer, M + 14, y + 2, { size: 8, color: BRAND.green, width: inner });
   }
   const boxBottom = y + 14;
   page.drawRectangle({ x: M, y: A4.h - boxBottom, width: W, height: boxBottom - boxTop, borderColor: k.color(BRAND.line), borderWidth: 0.75 });
@@ -273,7 +273,7 @@ export async function payslipPdf(p: Payslip): Promise<Uint8Array> {
     top = text(k, page, value, M + 150, top, { size: mono ? 8.5 : 10, font: mono ? k.fonts.mono : k.fonts.regular, width: W - 150 }) + 8;
     rule(k, page, top);
   }
-  if (p.explorer) top = text(k, page, p.explorer, M + 150, top + 8, { size: 8, color: BRAND.blue, width: W - 150 });
+  if (p.explorer) top = text(k, page, p.explorer, M + 150, top + 8, { size: 8, color: BRAND.green, width: W - 150 });
   top += 24;
   text(
     k,

@@ -280,7 +280,7 @@ function PayslipDialog({ me, run, position, onClose }: { me: Me; run: Run; posit
         aria-labelledby="payslip-h"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-surface p-6 shadow-xl outline-none sm:rounded-2xl"
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-surface p-6 shadow-xl outline-none sm:rounded-xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div>

@@ -6,6 +6,7 @@ import { ROLE_LABEL } from "@/lib/roles";
 import { totalsLabel } from "@/lib/money";
 import type { Approval, Me, Member, Run } from "@/lib/types";
 import { Badge, Button, Card, CheckIcon, shortAddress, Spinner } from "./ui";
+import { ChequeBand } from "./Security";
 
 export function useTeam() {
   return useQuery({ queryKey: ["team"], queryFn: () => api<{ members: Member[]; approvalsRequired: number }>("/api/team") });
@@ -145,11 +146,13 @@ export function OpenRunCard({
             : `Needs ${left} more approval${left === 1 ? "" : "s"}.`;
 
   return (
-    <Card className={`flex flex-col gap-5 rounded-[20px] p-6 sm:p-8 ${a.canApprove || a.canSend ? "border-brand/40 ring-2 ring-brand/15" : ""}`}>
+    <Card className={`overflow-hidden ${a.canApprove || a.canSend ? "border-brand/50 ring-1 ring-brand/30" : ""}`}>
+      <ChequeBand left={me.org.name} right={`Run ${run.id.slice(0, 8)}`} />
+      <div className="flex flex-col gap-5 p-6 sm:p-8">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex flex-1 basis-64 flex-col gap-1">
           <span className="text-sm font-medium text-ink-2">Payroll prepared by {nameOf(run.createdBy)}</span>
-          <h1 className="text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]">
+          <h1 className="text-[28px] leading-tight sm:text-[34px]">
             {run.status === "submitted" ? TITLE.submitted : left === 0 ? TITLE.approved : TITLE.pending}
           </h1>
           <p className="tabular text-base text-ink-2">
@@ -185,6 +188,7 @@ export function OpenRunCard({
             Cancel this payroll
           </button>
         )}
+      </div>
       </div>
     </Card>
   );

@@ -9,7 +9,7 @@ const VARIANTS: Record<Variant, string> = {
   ghost: "text-brand hover:bg-brand-soft",
   danger: "border border-bad-line bg-surface text-bad shadow-card hover:bg-bad-soft",
 };
-const SIZES = { md: "min-h-11 rounded-[10px] px-4 text-sm", lg: "min-h-[52px] rounded-xl px-6 text-[16px]" };
+const SIZES = { md: "min-h-11 rounded-lg px-4 text-sm", lg: "min-h-[52px] rounded-lg px-6 text-[15.5px]" };
 
 export function Button({
   variant = "primary",
@@ -27,7 +27,7 @@ export function Button({
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-line bg-surface shadow-card ${className}`}>{children}</section>;
+  return <section className={`rounded-[10px] border border-line bg-surface shadow-card ${className}`}>{children}</section>;
 }
 
 /** Title, one line of context and the page's actions, the same on every tab. */
@@ -52,7 +52,7 @@ export function Eyebrow({ children, className = "" }: { children: ReactNode; cla
 export function EmptyState({ icon, title, children, action }: { icon: keyof typeof EMPTY_ICONS; title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2.5 px-6 py-14 text-center">
-      <span className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-2 shadow-card" aria-hidden="true">
+      <span className="mb-1 flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface-2 text-brand shadow-card" aria-hidden="true">
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           {EMPTY_ICONS[icon]}
         </svg>
@@ -122,7 +122,7 @@ export function Field({ label, children, hint, className = "" }: { label: string
 }
 
 export const inputClass =
-  "min-h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3 text-[15px] text-ink shadow-card transition duration-150 placeholder:text-ink-3 hover:border-ink-3/50 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 disabled:bg-surface-2 disabled:text-ink-2";
+  "min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3 text-[15px] text-ink shadow-card transition duration-150 placeholder:text-ink-3 hover:border-ink-3/50 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 disabled:bg-surface-2 disabled:text-ink-2";
 
 export function shortAddress(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -149,5 +149,6 @@ export function Badge({ tone, children }: { tone: "brand" | "good" | "warn" | "b
     bad: "bg-bad-soft text-bad-text",
     neutral: "bg-line-soft text-ink-2",
   };
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+  // Badges read like a rubber stamp on a payslip: small caps in a squared box.
+  return <span className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] ${tones[tone]}`}>{children}</span>;
 }

@@ -10,14 +10,14 @@ export const WORDMARK = "M18.2 100.5 2.1 47.099999999999994H15.200000000000001L2
 
 /** Brand colors as hex, for places CSS variables can't reach (PDFs, SVG files, the social card). */
 export const BRAND = {
-  blue: "#2647D9",
-  deep: "#172C8F",
-  ink: "#0E1420",
-  ink2: "#4A5363",
-  ink3: "#5B6472",
-  line: "#E3E6EB",
-  canvas: "#F5F6F8",
-  good: "#0B6B42",
-  goodSoft: "#E6F4EC",
-  blueSoft: "#EBEFFD",
+  green: "#1D5A44",
+  deep: "#0E3225",
+  ink: "#13211B",
+  ink2: "#42524A",
+  ink3: "#58665F",
+  line: "#D2DACF",
+  canvas: "#EBEFE8",
+  good: "#1C6E48",
+  goodSoft: "#DEEEE4",
+  greenSoft: "#DCE9E1",
 } as const;

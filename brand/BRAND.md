@@ -1,6 +1,6 @@
 # Wagefold brand
 
-Wagefold is payroll for teams that pay in stablecoins. The brand should feel like a good finance tool: calm, exact, and trustworthy with real money. One confident blue, precise numbers, plain words.
+Wagefold is payroll for teams that pay in stablecoins. The brand borrows from payroll's own objects, the cheque and the payslip printed on security paper: sage paper, green-black ink, an engraving green, and the fine guilloché lines banknotes use to make copying hard. It should feel exact and trustworthy with real money, and never like a generic fintech.
 
 ![Brand guidelines](brand-guidelines.png)
 
@@ -12,7 +12,7 @@ Wagefold is payroll for teams that pay in stablecoins. The brand should feel lik
 | `wagefold-logo-dark.svg` | On dark backgrounds and in dark mode. |
 | `wagefold-logo-mono-black.svg` / `-mono-white.svg` | One colour: print, stamps, embossing, partner pages that need a single colour. |
 | `wagefold-mark.svg` / `wagefold-mark-dark.svg` | The mark alone, where the name is already present or space is tight. |
-| `wagefold-app-icon.svg`, `wagefold-app-icon-512.png` | App and favicon. White mark on brand blue. |
+| `wagefold-app-icon.svg`, `wagefold-app-icon-512.png` | App and favicon. White and mint mark on engraving green. |
 
 The mark is two interlocking strokes that read as a **W** and as a **folded ribbon** (wage + fold). The wordmark is Geist SemiBold converted to outlines, so the logo never depends on a font being installed.
 
@@ -28,30 +28,44 @@ All colours are CSS variables (`web/src/app/globals.css`) used through Tailwind 
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
-| `canvas` | `#F5F6F8` | `#0A0D14` | Page background |
-| `surface` | `#FFFFFF` | `#121722` | Cards, inputs, dialogs |
-| `ink` / `ink-2` / `ink-3` | `#0E1420` / `#4A5363` / `#5B6472` | `#E8ECF3` / `#A3ACBC` / `#8A93A3` | Text, secondary text, hints |
-| `line` | `#E3E6EB` | `#272E3D` | Borders, dividers |
-| `brand` | `#2647D9` | `#7C95FF` | Links, accents, focus rings |
-| `brand-solid` | `#2647D9` | `#3B5BE6` | Filled buttons and bands under white text |
-| `brand-soft` / `brand-dark` | `#EBEFFD` / `#1A35B0` | `#1B2348` / `#A9BAFF` | Selected states and badges |
-| `night` | `#0E1420` | `#1F2636` | Always-dark surfaces (toasts, the gas section) |
-| `good` / `warn` / `bad` | `#0B6B42` / `#7A4700` / `#B42318` | `#4ADE9A` / `#F5C26B` / `#F87171` | Paid, needs attention, wrong |
+| `canvas` | `#EBEFE8` | `#0B110E` | Page background: the security paper |
+| `surface` / `surface-2` | `#F8FAF5` / `#F1F4ED` | `#111915` / `#161F1A` | Sheets (cards, inputs, dialogs) and their stubs |
+| `ink` / `ink-2` / `ink-3` | `#13211B` / `#42524A` / `#58665F` | `#E4ECE6` / `#A4B2A9` / `#86958C` | Text, secondary text, labels |
+| `line` / `line-strong` | `#D2DACF` / `#B7C2B4` | `#233029` / `#34433B` | Hairlines; the amount rule and perforation on a cheque |
+| `brand` | `#1D5A44` | `#7FD1AA` | Links, accents, focus rings, guilloché |
+| `brand-solid` | `#1D5A44` | `#277656` | Filled buttons under white text |
+| `brand-soft` / `brand-dark` | `#DCE9E1` / `#144231` | `#163025` / `#A9E3C6` | Selected states |
+| `brass` | `#805816` | `#D6AC64` | Serial and run numbers on a cheque, nothing else |
+| `night` | `#13211B` | `#141E19` | Always-dark surfaces (toasts, the gas section) |
+| `good` / `warn` / `bad` | `#1C6E48` / `#7A4E00` / `#912819` | `#6ED69E` / `#E8BE6E` / `#F6ACA0` | Paid, needs attention, wrong |
 
-Why there are two blues in dark mode: white text on a bright blue fails contrast, and a dark blue link disappears on a dark card. So filled buttons use `brand-solid` (white text 5.5:1) and links use `brand` (6.5:1 on surface). Every text pairing in both themes meets WCAG AA (4.5:1 or better).
+Why there are two greens in dark mode: white text on a light green fails contrast, and a dark green link disappears on a dark sheet. So filled buttons use `brand-solid` (white text 5.5:1) and links use `brand` (9.9:1 on surface). Every text pairing in both themes meets WCAG AA (4.5:1 or better).
+
+Sheets sit flat on the page with a hairline edge, the way paper does. Only menus and dialogs cast a shadow. Corners are tight: 10 px for sheets, 8 px for buttons and inputs, 4 px for badges.
 
 The theme follows the system by default; people can pick Light or Dark in the header or Settings. The choice is stored in the browser and applied before first paint.
 
 ## Type
 
-- **Geist** for everything you read. SemiBold for headings with tight tracking (−0.03em at display sizes), Regular for text.
-- **Geist Mono** for amounts, addresses and hashes. Tabular figures. Amounts always show two decimals (`9,400.00 USDC`). When a person must check an address, show it in groups of four (`0x3C44 CdDd B6a9 …`), first and last groups bold.
+- **Archivo**, set wide (118% width, weight 640), for page titles, the cheque's "Pay" line and its amounts. Wide lettering is what banknotes and cheques use for value; keep it to those places.
+- **Geist** for everything you read: Regular for text, SemiBold for section headings and labels.
+- **Geist Mono** only for addresses, hashes and serial numbers. Amounts use Geist or Archivo with tabular figures and always show two decimals (`9,400.00 USDC`). When a person must check an address, show it in groups of four (`0x3C44 CdDd B6a9 …`), first and last groups bold.
+- Small caps labels (11–12 px, +0.14em tracking) name the fields on a cheque: Pay, The sum of, Signed by, Memo.
+
+## The cheque
+
+The payroll run is drawn as a cheque, because that is what it is: one signed instrument that pays the whole team.
+
+- A guilloché band across the top (`web/src/components/Security.tsx`) with the company on the left and the run number in brass on the right. The pattern is generated from fixed waves, so it is identical everywhere and never animates.
+- "Pay N people", "The sum of" with one line per token, and "Signed by" naming the approvers and the treasury.
+- A perforated tear line with punched notches, then the stub: the main action and a memo of where the numbers come from.
+- Badges read like rubber stamps: small caps in a squared box.
 
 ## Documents
 
 Invoices and payment statements are generated as A4 PDFs with one template:
 
-- 6 pt brand-blue rule across the top
+- 6 pt engraving-green rule across the top
 - logo top left, document type and number top right, green **PAID** pill
 - label-over-value fields in small caps
 - the amount is the largest type on the page
@@ -73,7 +87,7 @@ Sentence case everywhere, including buttons. No exclamation marks in the product
 
 ## Motion
 
-Motion is rare and functional: the landing hero, and the mark folding in while the app loads. Everything respects `prefers-reduced-motion`.
+Motion is rare and functional: the treasury signature writing itself once on the landing cheque, and the mark folding in while the app loads. Everything respects `prefers-reduced-motion`; with it on, the signature is simply there.
 
 ## Social and app icons
 

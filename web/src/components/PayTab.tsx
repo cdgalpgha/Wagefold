@@ -20,6 +20,7 @@ import { payDayLabel, scheduleStatus } from "@/lib/schedule";
 import { useEmployees } from "./PeopleTab";
 import { copyText, useToast } from "./toast";
 import { BRAND_LOGOS } from "./brand-logos";
+import { ChequeBand, ChequeLine, Perforation } from "./Security";
 import { Badge, Button, Card, CheckIcon, CopyIcon, Eyebrow, shortAddress, Skeleton, Spinner, XIcon } from "./ui";
 
 export function PayTab({
@@ -178,7 +179,7 @@ function PayHome({
   if (employees.isLoading) {
     return (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]" aria-busy="true">
-        <Card className="flex flex-col gap-5 rounded-[20px] p-8">
+        <Card className="flex flex-col gap-5 rounded-xl p-8">
           <Skeleton className="h-3 w-28" />
           <Skeleton className="h-11 w-72" />
           <Skeleton className="h-[52px] w-44 rounded-xl" />
@@ -192,16 +193,15 @@ function PayHome({
     );
   }
 
-  const cycle =
-    session.org.payDay === null
-      ? "Payroll"
-      : `${scheduleStatus(new Date(), session.org.payDay, null).next.toLocaleDateString(undefined, { month: "long" })} payroll`;
+  const next = session.org.payDay === null ? null : scheduleStatus(new Date(), session.org.payDay, null).next;
+  const cycle = next ? `${next.toLocaleDateString(undefined, { month: "long" })} payroll` : "Payroll";
+  const due = next?.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
   return (
     <div className={`grid items-start gap-6 ${used.length > 0 ? "lg:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
       <div className="flex min-w-0 flex-col gap-6">
         {rejected && !openRun && (
-          <div role="status" className="rounded-2xl border border-bad-line bg-bad-soft p-4 text-sm text-bad-text">
+          <div role="status" className="rounded-xl border border-bad-line bg-bad-soft p-4 text-sm text-bad-text">
             <span className="font-semibold">{nameOf(rejected.rejection?.by)} sent the last payroll back.</span>{" "}
             {rejected.rejection?.reason ? `“${rejected.rejection.reason}”` : ""} Fix it in People, then run payroll again.
           </div>
@@ -216,56 +216,64 @@ function PayHome({
             onRecheck={() => onRecheck(openRun)}
           />
         ) : (
-          <Card className="overflow-hidden rounded-[20px]">
-            <div className="flex flex-col gap-7 p-6 sm:p-8">
-              <div className="flex flex-col gap-2.5">
+          <Card className="relative overflow-hidden">
+            <ChequeBand left={session.org.name} right={`No. ${String((runs.data?.length ?? 0) + 1).padStart(4, "0")}`} />
+            <div className="flex flex-col gap-6 px-6 pb-7 pt-6 sm:px-8">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <Eyebrow>{cycle}</Eyebrow>
-                <h1 className="text-[34px] font-semibold leading-[1.08] tracking-[-0.025em] sm:text-[44px]">
-                  Pay {list.length} {list.length === 1 ? "person" : "people"}
-                </h1>
+                {due && <span className="text-[13px] text-ink-2">Due {due}</span>}
               </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-                {canPrepare ? (
-                  <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
-                    {preparing ? <Spinner /> : null}
-                    {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
-                  </Button>
+              <ChequeLine label="Pay">
+                <h1 className="text-[38px] leading-none sm:text-[54px]">
+                  {list.length} {list.length === 1 ? "person" : "people"}
+                </h1>
+              </ChequeLine>
+              <ChequeLine label="The sum of" rule>
+                {used.length ? (
+                  <ul className="flex flex-col gap-1">
+                    {used.map((t) => (
+                      <li key={t} className="tabular font-display text-[20px] font-semibold sm:text-[24px]">
+                        {formatAmount(totals[t])} <span className="text-ink-2">{t}</span>
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
-                  <span className="rounded-xl bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
+                  <p className="font-display text-[20px] font-semibold text-ink-3">Nothing yet</p>
                 )}
-                <span className="max-w-[44ch] text-sm leading-relaxed text-ink-2">
-                  {list.length === 0 ? "Add your team first. " : "Names, wallets and amounts come straight from "}
-                  <button type="button" onClick={onOpenPeople} className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
-                    People
-                  </button>
-                  .
-                  {canPrepare && session.org.approvalsRequired > 0 && (
-                    <> It goes to {session.org.approvalsRequired} approver{session.org.approvalsRequired === 1 ? "" : "s"} before the treasury can send it.</>
-                  )}
+              </ChequeLine>
+              <div className="flex items-end justify-between gap-4">
+                <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Signed by</span>
+                <span className="border-t border-line-strong pt-1.5 text-right text-sm font-medium">
+                  {session.org.approvalsRequired === 0
+                    ? "The treasury"
+                    : `${session.org.approvalsRequired} approver${session.org.approvalsRequired === 1 ? "" : "s"}, then the treasury`}
                 </span>
               </div>
               {short.length > 0 && (
-                <p role="alert" className="rounded-xl border border-warn-line bg-warn-soft px-4 py-3 text-sm text-warn">
+                <p role="alert" className="rounded-lg border border-warn-line bg-warn-soft px-4 py-3 text-sm text-warn">
                   Top up {short.map((t) => `${formatAmount(totals[t] - balances[t]!)} ${t}`).join(" and ")} before paying everyone.
                 </p>
               )}
             </div>
-            {used.length > 0 && (
-              <dl className="grid grid-cols-2 border-t border-line bg-surface-2 sm:flex sm:divide-x sm:divide-line">
-                {used.map((t) => (
-                  <div key={t} className="flex flex-col gap-1 px-6 py-4 sm:flex-1 sm:px-8">
-                    <dt><Eyebrow>{t}</Eyebrow></dt>
-                    <dd className="tabular text-[17px] font-semibold tracking-[-0.01em]">{formatAmount(totals[t])}</dd>
-                  </div>
-                ))}
-                <div className="flex flex-col gap-1 px-6 py-4 sm:flex-1 sm:px-8">
-                  <dt><Eyebrow>Approvals</Eyebrow></dt>
-                  <dd className="text-[17px] font-semibold tracking-[-0.01em]">
-                    {session.org.approvalsRequired === 0 ? "None" : `${session.org.approvalsRequired} required`}
-                  </dd>
-                </div>
-              </dl>
-            )}
+            <Perforation />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-4 bg-surface-2 px-6 py-5 sm:px-8">
+              {canPrepare ? (
+                <Button size="lg" onClick={onRun} disabled={preparing || list.length === 0}>
+                  {preparing ? <Spinner /> : null}
+                  {preparing ? "Pulling from People…" : needsApproval ? "Prepare payroll" : "Run payroll"}
+                </Button>
+              ) : (
+                <span className="rounded-lg bg-line-soft px-4 py-3 text-sm text-ink-2">You have view-only access.</span>
+              )}
+              <p className="min-w-0 flex-1 basis-52 text-sm leading-relaxed text-ink-2">
+                <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Memo</span>{" "}
+                {list.length === 0 ? "Add your team in " : "Names, wallets and amounts from "}
+                <button type="button" onClick={onOpenPeople} className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
+                  People
+                </button>
+                .
+              </p>
+            </div>
           </Card>
         )}
         <Schedule payDay={session.org.payDay} lastPaidAt={last ? last.paidAt ?? last.confirmedAt : null} onOpenSettings={onOpenSettings} />
@@ -482,7 +490,7 @@ function Review({
       {!preparing && detail && <ApprovalPanel run={run} approvals={approvals} required={detail.approvalsRequired} />}
 
       {review.lookalikes.length > 0 && (
-        <div role="alert" className="flex flex-col gap-2 rounded-2xl border border-bad-line bg-bad-soft p-5 text-sm text-bad-text">
+        <div role="alert" className="flex flex-col gap-2 rounded-xl border border-bad-line bg-bad-soft p-5 text-sm text-bad-text">
           <p className="text-base font-semibold">
             {review.lookalikes.length === 1 ? "One wallet looks like another wallet" : `${review.lookalikes.length} wallets look like other wallets`} you&apos;ve paid
           </p>
@@ -499,16 +507,16 @@ function Review({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {used.map((s) => (
           <Card key={s} className="flex flex-col gap-1 p-5">
-            <span className="text-sm text-ink-2">{s} to send</span>
-            <span className="tabular text-[26px] font-semibold tracking-[-0.02em]">{formatAmount(totals[s])}</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">{s} to send</span>
+            <span className="tabular font-display text-[26px] font-semibold">{formatAmount(totals[s])}</span>
             <span className="text-[13px] text-ink-2">
               {items.filter((i) => i.token === s).length} people · {balances[s] === undefined ? "…" : formatAmount(balances[s]!)} available
             </span>
           </Card>
         ))}
         <Card className="flex flex-col gap-1 p-5">
-          <span className="text-sm text-ink-2">Transactions</span>
-          <span className="tabular text-[26px] font-semibold tracking-[-0.02em]">1</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">Transactions</span>
+          <span className="tabular font-display text-[26px] font-semibold">1</span>
           <span className="text-[13px] text-ink-2">
             Network fee about {fee === undefined ? "…" : `${formatEth(fee)} ETH`}, plus a token approval if your wallet needs one
           </span>
@@ -628,7 +636,7 @@ function Review({
       </Card>
 
       {preparing && review.firstRun && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-warn-line bg-warn-soft p-4 text-sm text-warn">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-warn-line bg-warn-soft p-4 text-sm text-warn">
           <input type="checkbox" checked={allChecked} onChange={(e) => setAllChecked(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
           <span>
             <span className="font-semibold">I&apos;ve checked all {items.length} wallet addresses with each person.</span> Payments to a wrong address can&apos;t be
@@ -638,7 +646,7 @@ function Review({
       )}
 
       {mode === "approve" && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-sm">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-sm">
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-brand" />
           <span>
             <span className="font-semibold">I&apos;ve checked who gets paid, the amounts and every new or changed wallet.</span> Your wallet will sign an
@@ -822,7 +830,7 @@ function Progress({ phase }: { phase: Extract<Phase, { kind: "approving" | "conf
   ];
 
   return (
-    <Card className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-6 rounded-[20px] p-9 text-center">
+    <Card className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-6 rounded-xl p-9 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
         <Spinner className="h-7 w-7" />
       </span>
@@ -856,7 +864,7 @@ function Done({ run, items, onBack, onOpenHistory }: { run: Run; items: RunItem[
   const link = run.txHash ? explorerTx(run.chainId, run.txHash) : undefined;
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <Card className="flex flex-col items-center gap-5 rounded-[20px] p-9 text-center">
+      <Card className="flex flex-col items-center gap-5 rounded-xl p-9 text-center">
         <span className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-good-soft text-good">
           <CheckIcon className="h-9 w-9" />
         </span>
@@ -911,7 +919,7 @@ function Problem({
 }) {
   const link = txHash && chainId ? explorerTx(chainId, txHash) : undefined;
   return (
-    <Card className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-5 rounded-[20px] p-9 text-center">
+    <Card className="mx-auto mt-10 flex max-w-xl flex-col items-center gap-5 rounded-xl p-9 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-bad-soft text-bad">
         <XIcon className="h-7 w-7" />
       </span>

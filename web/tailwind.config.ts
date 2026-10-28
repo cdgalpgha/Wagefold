@@ -23,6 +23,7 @@ export default {
           muted: v("brand-muted"),
           "muted-ink": v("brand-muted-ink"),
         },
+        brass: v("brass"),
         good: { DEFAULT: v("good"), soft: v("good-soft"), dot: v("good-dot") },
         bad: { DEFAULT: v("bad"), text: v("bad-text"), soft: v("bad-soft"), line: v("bad-line") },
         warn: { DEFAULT: v("warn"), soft: v("warn-soft"), line: v("warn-line"), dot: v("warn-dot") },
@@ -38,6 +39,7 @@ export default {
       transitionTimingFunction: { out: "cubic-bezier(.2,.7,.2,1)" },
       fontFamily: {
         sans: ["Geist", "system-ui", "sans-serif"],
+        display: ["Archivo", "Geist", "system-ui", "sans-serif"],
         mono: ["'Geist Mono'", "ui-monospace", "monospace"],
       },
     },

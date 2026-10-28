@@ -105,13 +105,13 @@ It has not had an external audit. Get one before handling real payroll.
 - **Exports** neutralise spreadsheet formulas in user-typed fields (CSV injection), and payslips escape every value and contain no scripts.
 - **Invoices** are scoped to the company, issued once per payment (unique constraints stop duplicates under concurrent requests) and immutable in the database. PDFs are built in the browser from data the server already returned; nothing is uploaded.
 - **Headers:** `frame-ancestors 'self' https://app.safe.global` (anti-clickjacking while still allowing the Safe app), `nosniff`, HSTS, and `Cache-Control: no-store` on all API responses.
-- **Headers and CSRF:** a nonce-based Content-Security-Policy on every page (only scripts carrying the per-request nonce run), deny-all CSP on API responses, and API writes refused unless they come from this site with a JSON body (on top of the `SameSite=Lax` cookie). The only outside origins allowed for styles and fonts are Google Fonts, for Geist.
+- **Headers and CSRF:** a nonce-based Content-Security-Policy on every page (only scripts carrying the per-request nonce run), deny-all CSP on API responses, and API writes refused unless they come from this site with a JSON body (on top of the `SameSite=Lax` cookie). The only outside origins allowed for styles and fonts are Google Fonts, for Geist and Archivo.
 - **Tested with:** a manual code audit, OWASP ZAP (passive baseline and an authenticated active scan of every API path), Nuclei (10,688 templates), Semgrep (OWASP Top 10, React, Next.js, secrets), Slither, gitleaks and npm audit, plus the end-to-end attack suite (40 checks). Every issue found is fixed and covered by a test. CI runs the tests, Semgrep, Slither and gitleaks on every push. Full reports: [docs/security](docs/security/). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 - **Known items:** no rate limiting yet (add it at the proxy or edge); connections in the CSP stay open to `https:`/`wss:` for wallet relays; wallet SDKs bundle an older `zod` in the browser (the server uses a patched version); the contract is unaudited.
 
 ## Brand and themes
 
-The product has light and dark themes (system by default, switchable in the header and in Settings). Every colour is a CSS variable token, so the app, landing page and logo switch together. See [brand/BRAND.md](brand/BRAND.md) for the logo set, palette with contrast ratios, type, document template and voice.
+The product has light and dark themes (system by default, switchable in the header and in Settings). Every colour is a CSS variable token, so the app, landing page and logo switch together. The design is "security paper": payroll's own objects, the cheque and the payslip, with sage paper, an engraving green, wide Archivo lettering for value and a guilloché band on every payroll run. See [brand/BRAND.md](brand/BRAND.md) for the logo set, palette with contrast ratios, type, the cheque, document template and voice.
 
 ![Brand guidelines](brand/brand-guidelines.png)
 
