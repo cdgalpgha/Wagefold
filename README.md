@@ -161,6 +161,9 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
    - `RPC_URL_8453` (and/or `_84532`): your RPC provider's URL for the server, which verifies sign-ins and payments
    - `NEXT_PUBLIC_RPC_URL_8453` (and/or `_84532`): optional browser RPC. The browser tries it first and falls back to Base's public endpoint. Every visitor can see it, so use a separate key restricted to your domain
    - `NEXT_PUBLIC_USDT_ADDRESS_8453`: USDT on Base. Verify the address yourself before setting it; USDC on Base and Base Sepolia are built in.
+   - `TRUST_PROXY=1`: set this only when the app runs behind a proxy that sets `X-Forwarded-For` itself and overwrites what the client sent (Vercel, Cloudflare, most load balancers). Sign-in is then rate-limited per client IP. Without it, anonymous sign-in attempts share one allowance, because anyone can write that header.
+
+Rate limits (sign-in and payment checks) are counted in each server's memory and answer `429` with `Retry-After`. That is enough for one server. With several instances, also turn on your host's or proxy's rate limiting, since each instance counts on its own.
 
 ## USD rates
 

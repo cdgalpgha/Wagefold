@@ -3,12 +3,15 @@ import { getAddress, isHex } from "viem";
 import { parseSiweMessage } from "viem/siwe";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, readJson } from "@/lib/server/http";
+import { LIMITS, rateLimited } from "@/lib/server/rate-limit";
 import { getOrganization, logActivity, membershipsFor, upsertOrganization } from "@/lib/server/repo";
 import { consumeNonce, createSessionCookie, NONCE_COOKIE, NONCE_TTL_SECONDS, readNonceCookie } from "@/lib/server/session";
 
 const CLOCK_SKEW_MS = 2 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, LIMITS.verify);
+  if (limited) return limited;
   const body = (await readJson(req)) as { message?: unknown; signature?: unknown } | null;
   const message = typeof body?.message === "string" ? body.message : null;
   const signature = typeof body?.signature === "string" && isHex(body.signature) ? body.signature : null;

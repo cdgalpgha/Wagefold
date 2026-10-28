@@ -5,6 +5,7 @@ import { getChainConfig, TOKEN_SYMBOLS } from "@/lib/chains";
 import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, requireMember } from "@/lib/server/http";
+import { LIMITS, rateLimited } from "@/lib/server/rate-limit";
 import { ratesAt } from "@/lib/server/prices";
 import { ensureInvoices, getOrganization, getRun, logActivity, markRunResult, recordRunTransaction, type RunRecord } from "@/lib/server/repo";
 
@@ -36,10 +37,13 @@ async function paidOnChain(client: PublicClient, payroll: Address, treasury: Add
  * Reads the transaction from the chain and only marks the run paid if the payroll contract paid
  * exactly the snapshotted people and amounts, from this organization's treasury wallet.
  */
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const params = await ctx.params;
   const session = await requireMember();
   if (session instanceof NextResponse) return session;
+  // Each check reads the chain through our RPC provider: keep one session from burning its quota.
+  const limited = await rateLimited(req, LIMITS.confirm);
+  if (limited) return limited;
   const found = await getRun(session.orgId, params.id).catch(() => null);
   if (!found) return fail("Payroll run not found.", 404);
   let { run } = found;

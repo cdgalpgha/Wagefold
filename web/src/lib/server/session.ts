@@ -65,6 +65,11 @@ async function readToken(): Promise<(Session & { id: string }) | null> {
   }
 }
 
+/** This browser's session id, if it carries a cookie this server signed (revoked or not). For rate limits. */
+export async function sessionKey(): Promise<string | null> {
+  return (await readToken())?.id ?? null;
+}
+
 export async function readSession(): Promise<Session | null> {
   const token = await readToken();
   if (!token || !/^[0-9a-f-]{36}$/i.test(token.id)) return null;

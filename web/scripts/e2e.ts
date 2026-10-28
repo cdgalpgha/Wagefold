@@ -1,7 +1,8 @@
 /**
  * End-to-end test against a running stack:
  *   1. contracts: `npx hardhat node`, then `npm run dev:setup`
- *   2. web:       `npm run build && npm start` (or `npm run dev`)
+ *   2. web:       `npm run build && TRUST_PROXY=1 npm start` (or `TRUST_PROXY=1 npm run dev`; the rate-limit
+ *                 check sends X-Forwarded-For as a proxy would)
  *   3. web:       `npm run e2e`
  * Uses Hardhat's well-known test accounts. Never point this at a real network.
  */
@@ -49,14 +50,20 @@ const cfg: ChainConfig = {
 };
 const publicClient = createPublicClient({ chain: hardhat, transport: http() });
 
-/** Minimal cookie-keeping HTTP client, one per signed-in user. */
+/**
+ * Minimal cookie-keeping HTTP client, one per signed-in user. Each comes from its own address, the
+ * way a proxy in front of the app would report it (the server runs with TRUST_PROXY=1).
+ */
+let clients = 0;
 function client() {
   const jar = new Map<string, string>();
+  const ip = `198.18.${Math.floor(++clients / 250)}.${clients % 250}`;
   return Object.assign(call, { jar });
   async function call<T = any>(p: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
     const res = await fetch(BASE + p, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       headers: {
+        "x-forwarded-for": ip,
         ...init.headers,
         ...(init.body === undefined ? {} : { "content-type": "application/json" }),
         cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; "),
@@ -816,6 +823,21 @@ async function main() {
     assert.equal((await owner(`/api/runs/${r3.id}/submit`, { body: { txHash: tx } })).status, 401);
     assert.equal((await prep(`/api/runs/${r3.id}/submit`, { body: { txHash: tx } })).status, 403);
     assert.equal((await prep(`/api/runs/${r3.id}/cancel`, { body: {} })).status, 200);
+  });
+
+  await step("rate-limits sign-in per client IP and payment checks per session, with Retry-After", async () => {
+    const anon = client();
+    const verifyFrom = (ip: string) => anon("/api/auth/verify", { body: {}, headers: { "x-forwarded-for": `${ip}, 10.0.0.1` } });
+    for (let i = 0; i < 10; i++) assert.equal((await verifyFrom("203.0.113.50")).status, 400);
+    const blocked = await verifyFrom("203.0.113.50");
+    assert.equal(blocked.status, 429);
+    assert.ok(Number(blocked.headers.get("retry-after")) > 0);
+    assert.equal((await verifyFrom("203.0.113.51")).status, 400); // someone else isn't locked out
+    const missing = "00000000-0000-4000-8000-000000000000";
+    let status = 0;
+    for (let i = 0; i < 61 && status !== 429; i++) status = (await viewer(`/api/runs/${missing}/confirm`, { body: {} })).status;
+    assert.equal(status, 429);
+    assert.equal((await prep(`/api/runs/${missing}/confirm`, { body: {} })).status, 404); // another session has its own allowance
   });
 
   console.log(`\n${passed} end-to-end checks passed`);
