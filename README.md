@@ -169,6 +169,13 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
 
 Rate limits (sign-in and payment checks) are counted in each server's memory and answer `429` with `Retry-After`. That is enough for one server. With several instances, also turn on your host's or proxy's rate limiting, since each instance counts on its own.
 
+### Database changes
+
+The schema lives in numbered migrations in `web/src/lib/server/migrations.ts`. On start, the server applies any the database doesn't have yet, each in its own transaction, and records them in `schema_migrations`; servers starting together take turns through a lock. Databases created before migrations existed adopt migration 1 with their data untouched.
+
+- **Back up the database before every deploy.** A migration can't be undone by redeploying the old version. On Neon, take a branch or snapshot; on other Postgres hosts, `pg_dump`. With the embedded database, copy the `PGLITE_DIR` folder while the server is stopped.
+- To change the schema, add a migration with the next number. Never edit one that has shipped: the server logs `migration_changed` if it finds one edited.
+
 ## USD rates
 
 Exports and payslips show a USD value for every payment. By default that is par (1 token = 1 USD), labelled as such. To record a market rate instead, set a Chainlink-style price feed per token and chain, for example `PRICE_FEED_USDC_8453=0x…`; the server then reads it at the payment's block and names the feed in the export. Verify feed addresses on [data.chain.link](https://data.chain.link) before setting them.
