@@ -156,7 +156,8 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
    - `APP_DOMAIN`: the exact host people sign in on, e.g. `wagefold.app` (required in production, and set it at build time too: it makes the social-card URL absolute)
    - `DATABASE_URL`: a hosted Postgres URL. The embedded database only suits a single long-running server, not serverless.
    - `NEXT_PUBLIC_PAYROLL_ADDRESS_8453` (and/or `_84532`): the deployed contract
-   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: from WalletConnect Cloud, to enable Trust Wallet and other phone wallets
+   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: from WalletConnect Cloud, to enable Trust Wallet and other phone wallets (add your domain to the project's allowed list)
+   - `NEXT_PUBLIC_APP_URL`: the app's public address, e.g. `https://wagefold.app`. Wallets show it with the Wagefold icon when connecting; without it the page's own address is used
    - `RPC_URL_8453` (and/or `_84532`): your RPC provider's URL for the server, which verifies sign-ins and payments
    - `NEXT_PUBLIC_RPC_URL_8453` (and/or `_84532`): optional browser RPC. The browser tries it first and falls back to Base's public endpoint. Every visitor can see it, so use a separate key restricted to your domain
    - `NEXT_PUBLIC_USDT_ADDRESS_8453`: USDT on Base. Verify the address yourself before setting it; USDC on Base and Base Sepolia are built in.
