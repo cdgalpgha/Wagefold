@@ -237,6 +237,20 @@ async function main() {
     assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
+  await step("health check reports the database and each network, publicly, without secrets", async () => {
+    const res = await fetch(`${BASE}/api/health`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    assert.match(res.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+    const text = await res.text();
+    const body = JSON.parse(text);
+    assert.equal(body.ok, true);
+    assert.equal(body.db.ok, true);
+    const local = body.chains.find((c: { chainId: number }) => c.chainId === 31337);
+    assert.ok(local?.ok && /^\d+$/.test(local.block), text);
+    assert.ok(!/https?:|key|secret/i.test(text), text);
+  });
+
   const treasury = await step("signs in with the treasury wallet (SIWE)", async () => {
     await signIn(api, KEYS.treasury);
     const me = await api("/api/me");

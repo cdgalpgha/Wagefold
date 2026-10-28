@@ -682,6 +682,16 @@
           }
         }
       }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "health",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
     }
   }
 }

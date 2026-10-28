@@ -2,6 +2,7 @@ import "server-only";
 import { formatUnits, getAddress, isAddress, type Address, type PublicClient } from "viem";
 import type { TokenSymbol } from "../chains";
 import { PAR, type Rate } from "../records";
+import { logError } from "./log";
 
 const aggregatorAbi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
@@ -49,7 +50,7 @@ export async function ratesAt(
       const answer = round[1];
       if (answer > 0n) out[token] = { rate: formatUnits(answer, decimals), source: `Chainlink ${token}/USD feed ${feed} at block ${blockNumber}` };
     } catch (err) {
-      console.error("price feed read failed for %s on chain %d", token, chainId, err);
+      logError("price_feed_read_failed", err, { token, chainId });
     }
   }
   return out;

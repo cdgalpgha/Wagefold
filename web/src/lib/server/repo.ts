@@ -9,6 +9,7 @@ import { canonical } from "../money";
 import { onchainRef, type RunItem } from "../payments";
 import type { EmployeeInput } from "../validation";
 import { getDb } from "./db";
+import { logError } from "./log";
 
 export type Organization = Org;
 export type Employee = {
@@ -827,7 +828,7 @@ export async function logActivity(orgId: string, actor: string, action: string, 
       JSON.stringify(detail),
     ]);
   } catch (err) {
-    console.error("activity log write failed", err);
+    logError("activity_log_write_failed", err, { action });
   }
 }
 

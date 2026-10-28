@@ -5,6 +5,7 @@ import { getChainConfig, TOKEN_SYMBOLS } from "@/lib/chains";
 import { buildPayments, samePayments } from "@/lib/payments";
 import { serverClient } from "@/lib/server/chain";
 import { fail, json, requireMember } from "@/lib/server/http";
+import { logError } from "@/lib/server/log";
 import { LIMITS, rateLimited } from "@/lib/server/rate-limit";
 import { ratesAt } from "@/lib/server/prices";
 import { ensureInvoices, getOrganization, getRun, logActivity, markRunResult, recordRunTransaction, type RunRecord } from "@/lib/server/repo";
@@ -88,7 +89,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         ...(result.status === "failed" ? { reason: result.reason } : {}),
       });
       // Invoices are issued the moment a run is verified. If this fails, the Invoices page issues them later.
-      if (updated.status === "confirmed") await ensureInvoices(session.orgId).catch((err) => console.error("invoice issue failed", err));
+      if (updated.status === "confirmed") await ensureInvoices(session.orgId).catch((err) => logError("invoice_issue_failed", err, { runId: run.id }));
     }
     return json({ run: updated ?? run });
   };

@@ -163,6 +163,10 @@ cd web && npm run e2e            # sign-in, People, run, payment, verification, 
    - `NEXT_PUBLIC_USDT_ADDRESS_8453`: USDT on Base. Verify the address yourself before setting it; USDC on Base and Base Sepolia are built in.
    - `TRUST_PROXY=1`: set this only when the app runs behind a proxy that sets `X-Forwarded-For` itself and overwrites what the client sent (Vercel, Cloudflare, most load balancers). Sign-in is then rate-limited per client IP. Without it, anonymous sign-in attempts share one allowance, because anyone can write that header.
 
+   - `SENTRY_DSN`: optional. Server errors are sent to Sentry straight from the server (no SDK, nothing added to the browser). Every server error is also written to the log as one JSON line, with RPC URLs cut down to their host so API keys never reach the logs.
+
+**Monitoring.** `GET /api/health` answers `200` when the database and every configured network's RPC respond, `503` when one doesn't, with timings and the latest block. It's public, cached for 10 seconds and never shows URLs or error text, so point an uptime monitor at it.
+
 Rate limits (sign-in and payment checks) are counted in each server's memory and answer `429` with `Retry-After`. That is enough for one server. With several instances, also turn on your host's or proxy's rate limiting, since each instance counts on its own.
 
 ## USD rates
