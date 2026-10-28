@@ -13,7 +13,7 @@ Every payroll now takes two people by default: someone on the accounts team prep
 | The treasury can never send a run it prepared, and a run someone else prepared must carry their signature | `markRunSubmitted`, same statement as the update | `two-person payroll: the accounts team signs, the treasury approves by sending` |
 | Optional extra admin sign-offs still apply in between | unchanged | existing approval checks |
 
-Re-scan: 55 unit and 42 end-to-end checks pass; Semgrep 0 findings; gitleaks clean; ZAP results below.
+Re-scan: 55 unit and 42 end-to-end checks pass; Semgrep 0 findings; gitleaks clean; ZAP authenticated API scan (now including the signing endpoint) 113 passed, 0 failed, 0 server errors.
 
 ## Manual code audit, 26 October 2026
 
